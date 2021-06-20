@@ -1,0 +1,26 @@
+{
+  "name": "@livequery/client",
+  "repository": {
+    "url": "https://github.com/livequery/client"
+  },
+  "version": "1.0.6",
+  "description": "",
+  "main": "build/index.js",
+  "types": "build/index.d.ts",
+  "files": [
+    "build/**/*"
+  ],
+  "dependencies": {
+    "rxjs": "^7.1.0"
+  },
+  "devDependencies": {
+    "@livequery/types": "^1.0.18"
+  },
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "build": "rm -rf build; tsc -b .",
+    "deploy": "yarn build; git add .; git commit -m \"Update\"; git push origin master; npm publish --access public"
+  },
+  "author": "",
+  "license": "ISC"
+}
