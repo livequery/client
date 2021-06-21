@@ -14,7 +14,7 @@
     "rxjs": "^7.1.0"
   },
   "devDependencies": {
-    "@livequery/types": "^1.0.18"
+    "@livequery/types": "^1.0.23"
   },
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
