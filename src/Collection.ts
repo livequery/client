@@ -3,7 +3,7 @@ import { Subject, Subscription, Observable, interval, from } from 'rxjs'
 import { ErrorInfo, QueryOption, QueryStream, Transporter, UpdatedData } from '@livequery/types'
 import { get_sort_function } from './helpers/get_sort_function'
 import { bufferTime, tap, filter } from 'rxjs/operators'
-
+import { v4 } from 'uuid'
 
 export type CollectionOption<T = any> = {
   transporter: Transporter,
@@ -87,7 +87,7 @@ export class CollectionObservable<T extends { id: string }> extends Observable<C
 
       if (index >= 0) {
         if (type == 'added' || type == 'modified') {
-          this.#state.items[index] = { ...this.#state.items[index], ...payload }
+          this.#state.items[index] = { ...this.#state.items[index], ...payload, __adding: false, __updating: false, __removing: false }
         }
         if (type == 'removed') {
           this.#state.items.splice(index, 1)
@@ -157,8 +157,23 @@ export class CollectionObservable<T extends { id: string }> extends Observable<C
   }
 
 
-  public async add(payload: T) {
+  public async add(payload: T, local: boolean = false) {
+    if (local) {
+      const data = { id: v4(), ...payload, __adding: true } as any
+      this.sync([{
+        data: {
+          changes: [{
+            data,
+            ref: this.ref,
+            type: 'added'
+          }]
+        }
+      }])
+      await this.collection_options.transporter.update(`${this.ref}`, data)
+      return
+    }
     await this.collection_options.transporter.update(`${this.ref}`, payload as any)
+
   }
 
   public async remove(id: string) {
@@ -192,16 +207,6 @@ export class CollectionObservable<T extends { id: string }> extends Observable<C
 
     // Trigger remote 
     await this.collection_options.transporter.update(`${this.ref}/${id}`, payload as any)
-
-    this.sync([{
-      data: {
-        changes: [{
-          data: { id, __updating: false } as any,
-          ref: this.ref,
-          type: 'modified'
-        }]
-      }
-    }])
 
   }
 
