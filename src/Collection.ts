@@ -75,7 +75,7 @@ export class CollectionObservable<T extends { id: string }> extends Observable<C
 
   private sync(stream: QueryStream<T>[]) {
 
-    const changes = stream.map(s => s.data.changes).flat()
+    const changes = stream.map(s => s.data?.changes || []).flat().filter(c => c.data)
 
     for (const { data: payload, type } of changes) {
 
@@ -150,7 +150,9 @@ export class CollectionObservable<T extends { id: string }> extends Observable<C
   }
 
   public fetch_more() {
-    this.fetch_data({ ...this.#state?.options, _cursor: this.#next_cursor })
+    const options = this.#state?.options
+    this.#next_cursor && ((options._cursor as any) = this.#next_cursor)
+    this.fetch_data(options)
   }
 
   public filter(filters: Partial<QueryOption<T>>) {
