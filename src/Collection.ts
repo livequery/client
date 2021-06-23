@@ -80,8 +80,9 @@ export class CollectionObservable<T extends { id: string }> extends Observable<C
     for (const { data: payload, type } of changes) {
 
       const index = this.#state.items.findIndex(item => item.id == payload.id)
+      const normal_filters = Object.keys(this.#state.options || {}).every(k => k.startsWith('_'))
 
-      if (index == -1 && type == 'added' && Object.keys(this.#state.options?.filters || {}).length == 0) {
+      if (index == -1 && type == 'added' && normal_filters) {
         this.push_item(payload)
       }
 
