@@ -27,7 +27,7 @@ export type SmartQueryItem<T> = T & {
   __adding: boolean
   __remove: Function
   __update: (data: Partial<T>) => any
-  __trigger: (name: string, payload: any) => any
+  __trigger: (name: string, payload?: any) => any
 }
 
 export class CollectionObservable<T extends { id: string }> extends Observable<CollectionStream<T>>{
@@ -69,7 +69,7 @@ export class CollectionObservable<T extends { id: string }> extends Observable<C
       __remove: () => this.remove(id),
       __trigger: (name: string, payload?: any) => this.trigger(name, id, payload),
       __update: (payload: Partial<T>) => this.update({ id, ...payload })
-    }
+    } 
     this.#state.items.push(item)
   }
 
