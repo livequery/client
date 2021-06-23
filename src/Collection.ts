@@ -62,14 +62,14 @@ export class CollectionObservable<T extends { id: string }> extends Observable<C
   private push_item(data: Partial<T>) {
     const { id } = data
     const item = {
-      ...data as T,
       __adding: false,
       __updating: true,
       __removing: false,
+      ...data as T,
       __remove: () => this.remove(id),
       __trigger: (name: string, payload?: any) => this.trigger(name, id, payload),
       __update: (payload: Partial<T>) => this.update({ id, ...payload })
-    } 
+    }
     this.#state.items.push(item)
   }
 
@@ -87,7 +87,7 @@ export class CollectionObservable<T extends { id: string }> extends Observable<C
 
       if (index >= 0) {
         if (type == 'added' || type == 'modified') {
-          this.#state.items[index] = { ...this.#state.items[index], ...payload, __adding: false, __updating: false, __removing: false }
+          this.#state.items[index] = { ...this.#state.items[index], __adding: false, __updating: false, __removing: false, ...payload }
         }
         if (type == 'removed') {
           this.#state.items.splice(index, 1)
@@ -163,20 +163,19 @@ export class CollectionObservable<T extends { id: string }> extends Observable<C
       this.sync([{
         data: {
           changes: [{
-            data,
+            data: { ...payload, __adding: true },
             ref: this.ref,
             type: 'added'
           }]
         }
       }])
-      return await this.collection_options.transporter.update(`${this.ref}`, data) 
+      return await this.collection_options.transporter.add(`${this.ref}`, data)
     }
-    return await this.collection_options.transporter.update(`${this.ref}`, payload as any)
+    return await this.collection_options.transporter.add(`${this.ref}`, payload as any)
 
   }
 
   public async remove(id: string) {
-
     this.sync([{
       data: {
         changes: [{
@@ -202,13 +201,13 @@ export class CollectionObservable<T extends { id: string }> extends Observable<C
           type: 'modified'
         }]
       }
-    }]) 
+    }])
 
     return await this.collection_options.transporter.update(`${this.ref}/${id}`, payload as any)
 
   }
 
-  public async trigger(name: string, document_id: string | null, payload?: object) { 
+  public async trigger(name: string, document_id: string | null, payload?: object) {
     return await this.collection_options.transporter.trigger(document_id ? `${this.ref}/${document_id}` : this.ref, name, {}, payload as any)
   }
 }
