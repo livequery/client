@@ -97,11 +97,11 @@ export class CollectionObservable<T extends { id: string }> extends Observable<C
     }
 
     // Process paging & error 
-    const { error, data: { paging } } = stream[0]
+    const { error, data } = stream[0]
     error && (this.#state.error = error)
-    if (paging?.n == 0) {
-      this.#state.has_more = paging.has_more
-      this.#next_cursor = paging.next_cursor
+    if (data?.paging?.n == 0) {
+      this.#state.has_more = data?.paging?.has_more
+      this.#next_cursor = data?.paging?.next_cursor
       this.#state.loading = false
     }
     const sort_function = get_sort_function(this.#state.items[0], this.#state.options._order_by as string || 'created_at', this.#state.options._sort || 'desc')
