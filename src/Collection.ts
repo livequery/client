@@ -74,35 +74,37 @@ export class CollectionObservable<T extends { id: string }> extends Observable<C
   }
 
   private sync(stream: QueryStream<T>[]) {
-
     const changes = stream.map(s => s.data?.changes || []).flat().filter(c => c.data)
+    for (const { data, error } of stream) {
 
-    for (const { data: payload, type } of changes) {
-
-      const index = this.#state.items.findIndex(item => item.id == payload.id)
-      const normal_filters = Object.keys(this.#state.options || {}).every(k => k.startsWith('_'))
-
-      if (index == -1 && type == 'added' && normal_filters) {
-        this.push_item(payload)
+      // Error & paging
+      error && (this.#state.error = error)
+      if (data?.paging?.n == 0) {
+        this.#state.has_more = data?.paging?.has_more
+        this.#next_cursor = data?.paging?.next_cursor
+        this.#state.loading = false
       }
 
-      if (index >= 0) {
-        if (type == 'added' || type == 'modified') {
-          this.#state.items[index] = { ...this.#state.items[index], __adding: false, __updating: false, __removing: false, ...payload }
+      // Sync 
+      for (const { data: payload, type } of data.changes) {
+
+        const index = this.#state.items.findIndex(item => item.id == payload.id)
+        const normal_filters = Object.keys(this.#state.options || {}).every(k => k.startsWith('_'))
+
+        if (index == -1 && type == 'added' && (normal_filters || data?.paging?.n == 0)) {
+          this.push_item(payload)
         }
-        if (type == 'removed') {
-          this.#state.items.splice(index, 1)
+
+        if (index >= 0) {
+          if (type == 'added' || type == 'modified') {
+            this.#state.items[index] = { ...this.#state.items[index], __adding: false, __updating: false, __removing: false, ...payload }
+          }
+          if (type == 'removed') {
+            this.#state.items.splice(index, 1)
+          }
         }
       }
-    }
 
-    // Process paging & error 
-    const { error, data } = stream[0]
-    error && (this.#state.error = error)
-    if (data?.paging?.n == 0) {
-      this.#state.has_more = data?.paging?.has_more
-      this.#next_cursor = data?.paging?.next_cursor
-      this.#state.loading = false
     }
     const sort_function = get_sort_function(this.#state.items[0], this.#state.options._order_by as string || 'created_at', this.#state.options._sort || 'desc')
     this.#state.items = this.#state.items.sort(sort_function)
@@ -114,8 +116,12 @@ export class CollectionObservable<T extends { id: string }> extends Observable<C
     flush: boolean = false
   ) {
 
+    if (flush) {
+      this.#subscriptions.forEach(s => s.unsubscribe())
+      this.#subscriptions.clear()
+    }
+
     if (!this.ref || this.#state.loading) return
-    flush && this.#subscriptions.forEach(s => s.unsubscribe())
 
     this.#state = {
       ... this.#state,
