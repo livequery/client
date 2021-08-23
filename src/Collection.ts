@@ -74,7 +74,6 @@ export class CollectionObservable<T extends { id: string }> extends Observable<C
   }
 
   private sync(stream: QueryStream<T>[]) {
-    const changes = stream.map(s => s.data?.changes || []).flat().filter(c => c.data)
     for (const { data, error } of stream) {
 
       // Error & paging
