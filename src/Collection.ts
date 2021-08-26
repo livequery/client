@@ -85,7 +85,7 @@ export class CollectionObservable<T extends { id: string }> extends Observable<C
       }
 
       // Sync 
-      for (const { data: payload, type } of data.changes || []) {
+      for (const { data: payload, type } of data?.changes || []) {
 
         const index = this.#state.items.findIndex(item => item.id == payload.id)
         const normal_filters = Object.keys(this.#state.options || {}).every(k => k.startsWith('_'))
