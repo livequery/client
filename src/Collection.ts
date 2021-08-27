@@ -115,9 +115,7 @@ export class CollectionObservable<T extends { id: string }> extends Observable<C
     flush: boolean = false
   ) {
 
-    
-
-    if (!this.ref || this.#state.loading) return
+    if (!this.ref) return
 
     if (flush) {
       this.#subscriptions.forEach(s => s.unsubscribe())
