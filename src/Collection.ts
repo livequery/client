@@ -115,12 +115,14 @@ export class CollectionObservable<T extends { id: string }> extends Observable<C
     flush: boolean = false
   ) {
 
+    
+
+    if (!this.ref || this.#state.loading) return
+
     if (flush) {
       this.#subscriptions.forEach(s => s.unsubscribe())
       this.#subscriptions.clear()
     }
-
-    if (!this.ref || this.#state.loading) return
 
     this.#state = {
       ... this.#state,
