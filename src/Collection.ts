@@ -1,8 +1,8 @@
 
-import { Subject, Subscription, Observable, interval, from } from 'rxjs'
-import { ErrorInfo, QueryOption, QueryStream, Transporter, UpdatedData } from '@livequery/types'
+import { Subject, Subscription, Observable } from 'rxjs'
+import { ErrorInfo, QueryOption, QueryStream, Transporter } from '@livequery/types'
 import { get_sort_function } from './helpers/get_sort_function'
-import { bufferTime, tap, filter } from 'rxjs/operators'
+import { bufferTime, filter } from 'rxjs/operators'
 import { v4 } from 'uuid'
 
 export type CollectionOption<T = any> = {
@@ -36,7 +36,6 @@ export class CollectionObservable<T extends { id: string }> extends Observable<C
   #subscriptions = new Set<Subscription & { reload: Function }>()
   #state: CollectionStream<T>
   #next_cursor: string = null
-  private static last_query_id = 0
 
   constructor(private ref: string, private collection_options: CollectionOption<T>) {
     super(o => {
@@ -88,10 +87,41 @@ export class CollectionObservable<T extends { id: string }> extends Observable<C
       for (const { data: payload, type } of data?.changes || []) {
 
         const index = this.#state.items.findIndex(item => item.id == payload.id)
-        const normal_filters = Object.keys(this.#state.options || {}).every(k => k.startsWith('_'))
 
-        if (index == -1 && type == 'added' && (normal_filters || data?.paging?.n == 0)) {
-          this.push_item(payload)
+        if (index == -1 && type == 'added') {
+          if (
+            // Is first value from HTTP query
+            data?.paging?.n == 0
+            || (
+              // Is realtime update that match filters
+              Object
+                .keys(this.#state.options || {})
+                .filter(key => !key.includes('_'))
+                .every(key => {
+                  try {
+                    const [field, expression] = key.split(':')
+                    const a = payload[field]
+                    const b = this.#state.options?.[field]
+                    if (!expression) return a == b
+                    if (expression == 'ne') return a != b
+                    if (expression == 'lt') return a < b
+                    if (expression == 'lte') return a <= b
+                    if (expression == 'gt') return a > b
+                    if (expression == 'gte') return a >= b
+                    if (expression == 'in-array') return a?.includes(b)
+                    if (expression == 'contains') return a?.some(e => b?.includes(e))
+                    if (expression == 'not-contains') return a?.every(e => !b?.includes(e))
+                    if (expression == 'between') return (
+                      b[0] <= a && a <= b[1]
+                    )
+                    if (expression == 'like') return a.includes(b)
+                  } catch (e) { }
+                  return false
+                })
+            )
+          ) {
+            this.push_item(payload)
+          }
         }
 
         if (index >= 0) {
@@ -132,7 +162,7 @@ export class CollectionObservable<T extends { id: string }> extends Observable<C
 
     this.#$state.next(this.#state)
 
-    const query = this.collection_options.transporter.query(CollectionObservable.last_query_id++, this.ref, options)
+    const query = this.collection_options.transporter.query(this.ref, options)
     const sub = Object.assign(
       query
         .pipe(
