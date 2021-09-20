@@ -36,6 +36,7 @@ export class CollectionObservable<T extends { id: string }> extends Observable<C
   #subscriptions = new Set<Subscription & { reload: Function }>()
   #state: CollectionStream<T>
   #next_cursor: string = null
+  private is_collection_ref: boolean
 
   constructor(private ref: string, private collection_options: CollectionOption<T>) {
     super(o => {
@@ -55,6 +56,8 @@ export class CollectionObservable<T extends { id: string }> extends Observable<C
       }
     })
 
+    const refs = ref.split('/')
+    this.is_collection_ref = refs.length % 2 == 1
 
   }
 
@@ -145,6 +148,8 @@ export class CollectionObservable<T extends { id: string }> extends Observable<C
     flush: boolean = false
   ) {
 
+    console.log({ ref: this.ref, options })
+
     if (!this.ref) return
 
     if (flush) {
@@ -225,7 +230,8 @@ export class CollectionObservable<T extends { id: string }> extends Observable<C
     }])
 
     // Trigger  
-    return await this.collection_options.transporter.remove(`${this.ref}/${id}`)
+    const ref = `${this.ref}${this.is_collection_ref ? `/${id}` : ''}`
+    return await this.collection_options.transporter.remove(ref)
   }
 
   public async update({ id, ...payload }: { id: string } & Partial<T>) {
@@ -240,13 +246,14 @@ export class CollectionObservable<T extends { id: string }> extends Observable<C
         }]
       }
     }])
-
-    return await this.collection_options.transporter.update(`${this.ref}/${id}`, payload as any)
+    const ref = `${this.ref}${this.is_collection_ref ? `/${id}` : ''}`
+    return await this.collection_options.transporter.update(ref, payload as any)
 
   }
 
   public async trigger(name: string, document_id: string | null, payload?: object) {
-    return await this.collection_options.transporter.trigger(document_id ? `${this.ref}/${document_id}` : this.ref, name, {}, payload as any)
+    const ref = `${this.ref}${this.is_collection_ref ? `/${document_id}` : ''}`
+    return await this.collection_options.transporter.trigger(ref, name, {}, payload as any)
   }
 }
 
