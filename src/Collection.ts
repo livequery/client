@@ -37,6 +37,8 @@ export class CollectionObservable<T extends { id: string }> extends Observable<C
   #state: CollectionStream<T>
   #next_cursor: string = null
   private is_collection_ref: boolean
+  private collection_ref: string
+  private document_id: string
 
   constructor(private ref: string, private collection_options: CollectionOption<T>) {
     super(o => {
@@ -55,22 +57,22 @@ export class CollectionObservable<T extends { id: string }> extends Observable<C
         clearInterval(auto_reload_interval)
       }
     })
-
+    if (ref.startsWith('/') || ref.endsWith('/')) throw 'INVAILD_REF_FORMAT'
     const refs = ref.split('/')
     this.is_collection_ref = refs.length % 2 == 1
-
+    this.collection_ref = refs.slice(0, refs.length - (this.is_collection_ref ? 0 : 1)).join('/')
+    this.document_id = this.is_collection_ref ? null : refs[refs.length - 1]
   }
 
   private push_item(data: Partial<T>) {
-    const { id } = data
     const item = {
       __adding: false,
       __updating: true,
       __removing: false,
       ...data as T,
-      __remove: () => this.remove(id),
-      __trigger: (name: string, payload?: any) => this.trigger(name, id, payload),
-      __update: (payload: Partial<T>) => this.update({ id, ...payload })
+      __remove: () => this.remove(data?.id),
+      __trigger: (name: string, payload?: any) => this.trigger(name, payload, data?.id),
+      __update: (payload: Partial<T>) => this.update({ id: data?.id, ...payload })
     }
     this.#state.items.push(item)
   }
@@ -200,25 +202,13 @@ export class CollectionObservable<T extends { id: string }> extends Observable<C
   }
 
 
-  public async add(payload: T, local: boolean = false) {
-    if (local) {
-      const data = { id: v4(), ...payload, __adding: true } as any
-      this.sync([{
-        data: {
-          changes: [{
-            data: { ...payload, __adding: true },
-            ref: this.ref,
-            type: 'added'
-          }]
-        }
-      }])
-      return await this.collection_options.transporter.add(`${this.ref}`, data)
-    }
-    return await this.collection_options.transporter.add(`${this.ref}`, payload as any)
+  public async add(payload: T) {
+    return await this.collection_options.transporter.add(`${this.collection_ref}`, payload as any)
 
   }
 
-  public async remove(id: string) {
+  public async remove(remove_document_id?: string) {
+    const id = remove_document_id || this.document_id
     this.sync([{
       data: {
         changes: [{
@@ -230,12 +220,12 @@ export class CollectionObservable<T extends { id: string }> extends Observable<C
     }])
 
     // Trigger  
-    const ref = `${this.ref}${this.is_collection_ref ? `/${id}` : ''}`
+    const ref = `${this.collection_ref}${id ? `/${id}` : ''}`
     return await this.collection_options.transporter.remove(ref)
   }
 
-  public async update({ id, ...payload }: { id: string } & Partial<T>) {
-
+  public async update({ id: update_payload_id, ...payload }: Partial<T & { id: string }>) {
+    const id = update_payload_id || this.document_id
     // Trigger local update
     this.sync([{
       data: {
@@ -246,13 +236,14 @@ export class CollectionObservable<T extends { id: string }> extends Observable<C
         }]
       }
     }])
-    const ref = `${this.ref}${this.is_collection_ref ? `/${id}` : ''}`
+    const ref = `${this.collection_ref}${id ? `/${id}` : ''}`
     return await this.collection_options.transporter.update(ref, payload as any)
 
   }
 
-  public async trigger(name: string, document_id: string | null, payload?: object) {
-    const ref = `${this.ref}${this.is_collection_ref ? `/${document_id}` : ''}`
+  public async trigger(name: string, payload?: object, trigger_document_id?: string) {
+    const id = trigger_document_id || this.document_id
+    const ref = `${this.collection_ref}${id ? `/${id}` : ''}`
     return await this.collection_options.transporter.trigger(ref, name, {}, payload as any)
   }
 }
