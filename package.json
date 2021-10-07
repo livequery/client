@@ -15,7 +15,7 @@
     "uuid": "^8.3.2"
   },
   "devDependencies": {
-    "@livequery/types": "^1.0.29"
+    "@livequery/types": "^1.0.31"
   },
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
