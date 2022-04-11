@@ -67,7 +67,7 @@ export class CollectionObservable<T extends { id: string }> extends Observable<C
   private push_item(data: Partial<T>) {
     const item = {
       __adding: false,
-      __updating: true,
+      __updating: false,
       __removing: false,
       ...data as T,
       __remove: () => this.remove(data?.id),
@@ -148,9 +148,7 @@ export class CollectionObservable<T extends { id: string }> extends Observable<C
   private fetch_data(
     options: Partial<QueryOption<T>> = {},
     flush: boolean = false
-  ) {
-
-    console.log({ ref: this.ref, options })
+  ) { 
 
     if (!this.ref) return
 
@@ -241,7 +239,6 @@ export class CollectionObservable<T extends { id: string }> extends Observable<C
 
   public async trigger<T>(name: string, payload?: object, trigger_document_id?: string) {
     const id = trigger_document_id || this.document_id
-    console.log({ id })
     const ref = `${this.collection_ref}${id ? `/${id}` : ''}`
     return await this.collection_options.transporter.trigger(ref, name, {}, payload as any) as T
   }
