@@ -66,13 +66,13 @@ export class CollectionObservable<T extends { id: string }> extends Observable<C
 
   private push_item(data: Partial<T>) {
     const item = {
+      ...data as T,
       __adding: false,
       __updating: false,
       __removing: false,
-      ...data as T,
       __remove: () => this.remove(data?.id),
       __trigger: (name: string, payload?: any) => this.trigger(name, payload, data?.id),
-      __update: (payload: Partial<T>) => this.update({ id: data?.id, ...payload })
+      __update: (payload: Partial<T>) => this.update({ ...payload, id: data?.id })
     }
     this.#state.items.push(item)
   }
@@ -131,7 +131,13 @@ export class CollectionObservable<T extends { id: string }> extends Observable<C
 
         if (index >= 0) {
           if (type == 'added' || type == 'modified') {
-            this.#state.items[index] = { ...this.#state.items[index], __adding: false, __updating: false, __removing: false, ...payload }
+            this.#state.items[index] = {
+              ...this.#state.items[index],
+              ...payload,
+              __adding: false,
+              __updating: false,
+              __removing: false
+            }
           }
           if (type == 'removed') {
             this.#state.items.splice(index, 1)
@@ -148,7 +154,7 @@ export class CollectionObservable<T extends { id: string }> extends Observable<C
   private fetch_data(
     options: Partial<QueryOption<T>> = {},
     flush: boolean = false
-  ) { 
+  ) {
 
     if (!this.ref) return
 
@@ -226,7 +232,7 @@ export class CollectionObservable<T extends { id: string }> extends Observable<C
     this.sync([{
       data: {
         changes: [{
-          data: { id, __updating: true, ...payload } as any,
+          data: { ...payload, id, __updating: true } as any,
           ref: this.ref,
           type: 'modified'
         }]
