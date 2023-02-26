@@ -145,9 +145,7 @@ export class CollectionObservable<T extends { id: string }> extends Observable<C
         }
       }
 
-    }
-    const sort_function = get_sort_function(this.#state.items[0], this.#state.options._order_by as string || 'created_at', this.#state.options._sort || 'desc')
-    this.#state.items = this.#state.items.sort(sort_function)
+    } 
     this.#$state.next(this.#state)
   }
 
