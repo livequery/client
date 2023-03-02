@@ -96,8 +96,7 @@ export class CollectionObservable<T extends { id: string }> extends Observable<C
         const { data: payload, type } = change
         this.$changes.next(change)
 
-        const index = this.#IdMap.get(payload.id) || -1
-
+        const index = this.#IdMap.get(payload.id) ?? -1
         if (index == -1 && type == 'added') {
           if (
             // Is first value from HTTP query
