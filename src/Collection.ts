@@ -1,6 +1,6 @@
 
 import { Subject, Subscription, Observable } from 'rxjs'
-import { ErrorInfo, QueryOption, QueryStream, Transporter } from '@livequery/types'
+import { ErrorInfo, QueryOption, QueryStream, Transporter, UpdatedData } from '@livequery/types'
 import { get_sort_function } from './helpers/get_sort_function'
 import { bufferTime, filter } from 'rxjs/operators'
 import { v4 } from 'uuid'
@@ -39,6 +39,8 @@ export class CollectionObservable<T extends { id: string }> extends Observable<C
   private is_collection_ref: boolean
   private collection_ref: string
   private document_id: string
+  public readonly $changes = new Subject<UpdatedData<T>>()
+  #IdMap = new Map<string, number>()
 
   constructor(private ref: string, private collection_options: CollectionOption<T>) {
     super(o => {
@@ -75,6 +77,7 @@ export class CollectionObservable<T extends { id: string }> extends Observable<C
       __update: (payload: Partial<T>) => this.update({ ...payload, id: data?.id })
     }
     this.#state.items.push(item)
+    this.#IdMap.set(item.id, this.#state.items.length - 1)
   }
 
   private sync(stream: QueryStream<T>[]) {
@@ -89,9 +92,11 @@ export class CollectionObservable<T extends { id: string }> extends Observable<C
       }
 
       // Sync 
-      for (const { data: payload, type } of data?.changes || []) {
+      for (const change of data?.changes || []) {
+        const { data: payload, type } = change
+        this.$changes.next(change)
 
-        const index = this.#state.items.findIndex(item => item.id == payload.id)
+        const index = this.#IdMap.get(payload.id) || -1
 
         if (index == -1 && type == 'added') {
           if (
@@ -125,6 +130,7 @@ export class CollectionObservable<T extends { id: string }> extends Observable<C
                 })
             )
           ) {
+
             this.push_item(payload)
           }
         }
@@ -141,11 +147,15 @@ export class CollectionObservable<T extends { id: string }> extends Observable<C
           }
           if (type == 'removed') {
             this.#state.items.splice(index, 1)
+            for (const [document_id, i] of this.#IdMap) {
+              i == index && this.#IdMap.delete(document_id)
+              i > index && this.#IdMap.set(document_id, i - 1)
+            }
           }
         }
       }
 
-    } 
+    }
     this.#$state.next(this.#state)
   }
 
@@ -160,6 +170,8 @@ export class CollectionObservable<T extends { id: string }> extends Observable<C
       this.#subscriptions.forEach(s => s.unsubscribe())
       this.#subscriptions.clear()
     }
+
+    flush && this.#IdMap.clear()
 
     this.#state = {
       ... this.#state,
