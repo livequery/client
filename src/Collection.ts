@@ -10,6 +10,7 @@ export type CollectionOption<T = any> = {
   sync_delay?: number
   filters?: Partial<QueryOption<T>>
   reload_interval?: number
+  realtime?: boolean
 }
 
 
@@ -42,6 +43,10 @@ export class CollectionObservable<T extends { id: string }> extends Observable<C
   public readonly $changes = new Subject<UpdatedData<T>>()
   #IdMap = new Map<string, number>()
 
+  set_realtime(realtime: boolean) {
+    this.collection_options.realtime = realtime
+  }
+
   constructor(private ref: string, private collection_options: CollectionOption<T>) {
     super(o => {
 
@@ -66,21 +71,11 @@ export class CollectionObservable<T extends { id: string }> extends Observable<C
     this.document_id = this.is_collection_ref ? null : refs[refs.length - 1]
   }
 
-  private push_item(data: Partial<T>) {
-    const item = {
-      ...data as T,
-      __adding: false,
-      __updating: false,
-      __removing: false,
-      __remove: () => this.remove(data?.id),
-      __trigger: (name: string, payload?: any) => this.trigger(name, payload, data?.id),
-      __update: (payload: Partial<T>) => this.update({ ...payload, id: data?.id })
-    }
-    this.#state.items.push(item)
-    this.#IdMap.set(item.id, this.#state.items.length - 1)
-  }
+
 
   private sync(stream: QueryStream<T>[]) {
+    const realtime = this.collection_options.realtime ?? true 
+    const actions = { update: false, reindex: false }
     for (const { data, error } of stream) {
 
       // Error & paging
@@ -95,15 +90,15 @@ export class CollectionObservable<T extends { id: string }> extends Observable<C
       for (const change of data?.changes || []) {
         const { data: payload, type } = change
         this.$changes.next(change)
-
         const index = this.#IdMap.get(payload.id) ?? -1
+
         if (index == -1 && type == 'added') {
           if (
             // Is first value from HTTP query
             data?.paging?.n == 0
             || (
               // Is realtime update that match filters
-              Object
+              realtime && Object
                 .keys(this.#state.options || {})
                 .filter(key => !key.includes('_'))
                 .every(key => {
@@ -130,12 +125,28 @@ export class CollectionObservable<T extends { id: string }> extends Observable<C
             )
           ) {
 
-            this.push_item(payload)
+            this.#state.items.push({
+              ...payload as T,
+              __adding: false,
+              __updating: false,
+              __removing: false,
+              __remove: () => this.remove(payload?.id),
+              __trigger: (name: string, payload?: any) => this.trigger(name, payload, payload?.id),
+              __update: (payload: Partial<T>) => this.update({ ...payload, id: payload?.id })
+            })
+
+            actions.reindex = true
+            actions.update = true
           }
         }
 
-        if (index >= 0) {
+        if (index >= 0 && realtime) {
+
           if (type == 'added' || type == 'modified') {
+            actions.update = true
+            if (Object.keys(payload).some(key => ['created_at', this.collection_options.filters._order_by].includes(key))) {
+              actions.reindex = true
+            }
             this.#state.items[index] = {
               ...this.#state.items[index],
               ...payload,
@@ -144,7 +155,11 @@ export class CollectionObservable<T extends { id: string }> extends Observable<C
               __removing: false
             }
           }
+
+
           if (type == 'removed') {
+            actions.reindex = true
+            actions.update = true
             this.#state.items.splice(index, 1)
             for (const [document_id, i] of this.#IdMap) {
               i == index && this.#IdMap.delete(document_id)
@@ -155,7 +170,8 @@ export class CollectionObservable<T extends { id: string }> extends Observable<C
       }
 
     }
-    this.#$state.next(this.#state)
+    actions.reindex && (this.#IdMap.clear(), this.#state.items.map((item, index) => this.#IdMap.set(item.id, index)))
+    actions.update && this.#$state.next(this.#state)
   }
 
   private fetch_data(
