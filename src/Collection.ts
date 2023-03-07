@@ -144,7 +144,7 @@ export class CollectionObservable<T extends { id: string }> extends Observable<C
 
           if (type == 'added' || type == 'modified') {
             actions.update = true
-            if (Object.keys(payload).some(key => ['created_at', this.collection_options.filters._order_by].includes(key))) {
+            if (Object.keys(payload).some(key => ['created_at', this.collection_options?.filters?._order_by].includes(key))) {
               actions.reindex = true
             }
             this.#state.items[index] = {
@@ -170,13 +170,15 @@ export class CollectionObservable<T extends { id: string }> extends Observable<C
       }
 
     }
-    
-    actions.reindex && this.#state.items.sort(get_sort_function(
-      this.#state.items[0],
-      this.collection_options.filters._order_by as string || 'created_at',
-      this.collection_options.filters._sort
-    ))
-    actions.reindex && (this.#IdMap.clear(), this.#state.items.map((item, index) => this.#IdMap.set(item.id, index)))
+    if (actions.reindex) {
+      this.#state.items = this.#state.items.sort(get_sort_function(
+        this.#state.items[0],
+        this.collection_options?.filters?._order_by as string || 'created_at',
+        this.collection_options?.filters?._sort
+      ))
+      this.#IdMap.clear()
+      this.#state.items.map((item, index) => this.#IdMap.set(item.id, index))
+    }
     actions.update && this.#$state.next(this.#state)
   }
 
