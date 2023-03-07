@@ -84,6 +84,7 @@ export class CollectionObservable<T extends { id: string }> extends Observable<C
         this.#state.has_more = data?.paging?.has_more
         this.#next_cursor = data?.paging?.next_cursor
         this.#state.loading = false
+        actions.update = true
       }
 
       // Sync 
