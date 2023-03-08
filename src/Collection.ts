@@ -2,7 +2,7 @@
 import { Subject, Subscription, Observable } from 'rxjs'
 import { ErrorInfo, QueryOption, QueryStream, Transporter, UpdatedData } from '@livequery/types'
 import { get_sort_function } from './helpers/get_sort_function'
-import { bufferTime, filter } from 'rxjs/operators'
+import { bufferTime, filter, map } from 'rxjs/operators'
 import { v4 } from 'uuid'
 
 export type CollectionOption<T = any> = {
@@ -89,6 +89,7 @@ export class CollectionObservable<T extends { id: string }> extends Observable<C
 
       // Sync 
       for (const change of data?.changes || []) {
+        if (!change.data.id) continue
         const { data: payload, type } = change
         this.$changes.next(change)
         const index = this.#IdMap.get(payload.id) ?? -1
