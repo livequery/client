@@ -89,7 +89,7 @@ export class CollectionObservable<T extends { id: string }> extends Observable<C
 
       // Sync 
       for (const change of data?.changes || []) {
-        if (!change.data.id) continue
+        if (!change?.data?.id) continue
         const { data: payload, type } = change
         this.$changes.next(change)
         const index = this.#IdMap.get(payload.id) ?? -1
