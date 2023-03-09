@@ -133,8 +133,8 @@ export class CollectionObservable<T extends { id: string }> extends Observable<C
               __updating: false,
               __removing: false,
               __remove: () => this.remove(payload?.id),
-              __trigger: (name: string, payload?: any) => this.trigger(name, payload, payload?.id),
-              __update: (payload: Partial<T>) => this.update({ ...payload, id: payload?.id })
+              __trigger: (name: string, input?: any) => this.trigger(name, input, payload?.id),
+              __update: (input: Partial<T>) => this.update({ ...input, id: payload?.id })
             })
 
             actions.reindex = true
