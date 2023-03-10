@@ -73,13 +73,17 @@ export class CollectionObservable<T extends { id: string }> extends Observable<C
 
 
 
-  private sync(stream: QueryStream<T>[]) {
+  private sync(stream: QueryStream<T>[], from_local: boolean = false) {
     const realtime = this.collection_options.realtime ?? true
     const actions = { update: false, reindex: false }
     for (const { data, error } of stream) {
 
       // Error & paging
-      error && (this.#state.error = error)
+      if (error) {
+        this.#state.error = error
+        actions.update = true
+      }
+
       if (data?.paging?.n == 0) {
         this.#state.has_more = data?.paging?.has_more
         this.#next_cursor = data?.paging?.next_cursor
@@ -92,7 +96,7 @@ export class CollectionObservable<T extends { id: string }> extends Observable<C
         if (!change?.data?.id) continue
         const { data: payload, type } = change
         this.$changes.next(change)
-        const index = this.#IdMap.get(payload.id) ?? -1
+        const index = this.#IdMap.get((payload as any).__local_id || payload.id) ?? -1
 
         if (index == -1 && type == 'added') {
           if (
@@ -100,7 +104,7 @@ export class CollectionObservable<T extends { id: string }> extends Observable<C
             data?.paging?.n == 0
             || (
               // Is realtime update that match filters
-              realtime && Object
+              (realtime || from_local) && Object
                 .keys(this.#state.options || {})
                 .filter(key => !key.includes('_'))
                 .every(key => {
@@ -142,7 +146,7 @@ export class CollectionObservable<T extends { id: string }> extends Observable<C
           }
         }
 
-        if (index >= 0 && realtime) {
+        if (index >= 0 && (realtime || from_local)) {
 
           if (type == 'added' || type == 'modified') {
             actions.update = true
@@ -241,24 +245,7 @@ export class CollectionObservable<T extends { id: string }> extends Observable<C
   }
 
   public async add(payload: T) {
-    return await this.collection_options.transporter.add(`${this.collection_ref}`, payload as any) as T
-  }
-
-  public async remove(remove_document_id?: string) {
-    const id = remove_document_id || this.document_id
-    this.sync([{
-      data: {
-        changes: [{
-          data: { id, __removing: true } as any,
-          ref: this.ref,
-          type: 'modified'
-        }]
-      }
-    }])
-
-    // Trigger  
-    const ref = `${this.collection_ref}${id ? `/${id}` : ''}`
-    await this.collection_options.transporter.remove(ref)
+    return await this.collection_options.transporter.add(`${this.collection_ref}`, payload as any) as { data: { item: T } }
   }
 
   public async update({ id: update_payload_id, ...payload }: Partial<T & { id: string }>) {
@@ -272,10 +259,52 @@ export class CollectionObservable<T extends { id: string }> extends Observable<C
           type: 'modified'
         }]
       }
-    }])
+    }], true)
     const ref = `${this.collection_ref}${id ? `/${id}` : ''}`
-    return await this.collection_options.transporter.update(ref, payload as any) as T
+    try {
+      return await this.collection_options.transporter.update(ref, payload as any) as any
+    } catch (e) {
+      this.sync([{
+        data: {
+          changes: [{
+            data: { id, __updating: false } as any,
+            ref: this.ref,
+            type: 'modified'
+          }]
+        }
+      }], true)
+      throw e
+    }
+  }
 
+  public async remove(remove_document_id?: string) {
+    const id = remove_document_id || this.document_id
+    this.sync([{
+      data: {
+        changes: [{
+          data: { id, __removing: true } as any,
+          ref: this.ref,
+          type: 'modified'
+        }]
+      }
+    }], true)
+
+    // Trigger  
+    const ref = `${this.collection_ref}${id ? `/${id}` : ''}`
+    try {
+      return await this.collection_options.transporter.remove(ref)
+    } catch (e) {
+      this.sync([{
+        data: {
+          changes: [{
+            data: { id, __removing: false } as any,
+            ref: this.ref,
+            type: 'modified'
+          }]
+        }
+      }], true)
+      throw e
+    }
   }
 
   public async trigger<T>(name: string, payload?: object, trigger_document_id?: string) {
