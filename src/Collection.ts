@@ -155,10 +155,10 @@ export class CollectionObservable<T extends { id: string }> extends Observable<C
             }
             this.#state.items[index] = {
               ...this.#state.items[index],
-              ...payload,
               __adding: false,
               __updating: false,
-              __removing: false
+              __removing: false,
+              ...payload
             }
           }
 
