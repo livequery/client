@@ -42,7 +42,6 @@ export class CollectionObservable<T extends { id: string }> extends Observable<C
   #subscriptions = new Set<Subscription & { reload: Function }>()
   #state: CollectionStream<T>
   #next_cursor: { [ref: string]: string } = {}
-  #document_id: string
   #IdMap = new Map<string, number>()
   #refs: string[] = []
 
@@ -67,8 +66,6 @@ export class CollectionObservable<T extends { id: string }> extends Observable<C
       }
     })
     if (ref.startsWith('/') || ref.endsWith('/')) throw 'INVAILD_REF_FORMAT'
-    const refs = ref.split('/')
-    this.#document_id = refs.length % 2 == 1 ? null : refs[refs.length - 1]
     this.#refs = this.#ref_parser(ref)
   }
 
@@ -80,10 +77,8 @@ export class CollectionObservable<T extends { id: string }> extends Observable<C
       const d = [r, ...c]
       return refs_builder(d)
     }
-
-    const b = path.split('/').map(l => l.split('.'))
-
-    return refs_builder(b).flat(2) as string[]
+    const refs = path.split(',').map(f => f.split('/').map(l => l.split('.'))).flat(1)
+    return refs_builder(refs).flat(2) as string[]
   }
 
   set_realtime(realtime: boolean) {
@@ -274,7 +269,7 @@ export class CollectionObservable<T extends { id: string }> extends Observable<C
     return await this.collection_options.transporter.add(`${this.ref}`, payload as any) as { data: { item: T } }
   }
 
-  #find_ref_by_id(id: string = this.#document_id) {
+  #find_ref_by_id(id: string) {
     if (!id) throw 'ID_NOT_FOUND'
     const collection_ref = this.#state.items[this.#IdMap.get(id)].__collection_ref
     if (!collection_ref) throw 'COLLECTION_REF_NOT_FOUND'
