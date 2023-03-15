@@ -1,8 +1,8 @@
 
-import { Subject, Subscription, Observable } from 'rxjs'
+import { Subject, Subscription, Observable, from, merge } from 'rxjs'
 import { ErrorInfo, QueryOption, QueryStream, Transporter, UpdatedData } from '@livequery/types'
 import { get_sort_function } from './helpers/get_sort_function'
-import { bufferTime, filter, map } from 'rxjs/operators'
+import { bufferCount, bufferTime, filter, map, mergeAll, toArray } from 'rxjs/operators'
 import { v4 } from 'uuid'
 
 export type CollectionOption<T = any> = {
@@ -13,6 +13,15 @@ export type CollectionOption<T = any> = {
   realtime?: boolean
 }
 
+export type SmartQueryItem<T> = T & {
+  __removing: boolean
+  __updating: boolean
+  __adding: boolean
+  __remove: Function
+  __update: (data: Partial<T>) => any
+  __trigger: (name: string, payload?: any) => any
+  __collection_ref: string
+}
 
 type CollectionStream<T> = {
   items: SmartQueryItem<T>[],
@@ -22,30 +31,23 @@ type CollectionStream<T> = {
   options: Partial<QueryOption<T>>
 }
 
-export type SmartQueryItem<T> = T & {
-  __removing: boolean
-  __updating: boolean
-  __adding: boolean
-  __remove: Function
-  __update: (data: Partial<T>) => any
-  __trigger: (name: string, payload?: any) => any
-}
 
 export class CollectionObservable<T extends { id: string }> extends Observable<CollectionStream<T>>{
+
+
+  public readonly $changes = new Subject<UpdatedData<T>>()
+
 
   #$state = new Subject<CollectionStream<T>>()
   #subscriptions = new Set<Subscription & { reload: Function }>()
   #state: CollectionStream<T>
-  #next_cursor: string = null
-  private is_collection_ref: boolean
-  private collection_ref: string
-  private document_id: string
-  public readonly $changes = new Subject<UpdatedData<T>>()
+  #next_cursor: { [ref: string]: string } = {}
+  #document_id: string
   #IdMap = new Map<string, number>()
+  #refs: string[] = []
 
-  set_realtime(realtime: boolean) {
-    this.collection_options.realtime = realtime
-  }
+
+
 
   constructor(private ref: string, private collection_options: CollectionOption<T>) {
     super(o => {
@@ -66,17 +68,32 @@ export class CollectionObservable<T extends { id: string }> extends Observable<C
     })
     if (ref.startsWith('/') || ref.endsWith('/')) throw 'INVAILD_REF_FORMAT'
     const refs = ref.split('/')
-    this.is_collection_ref = refs.length % 2 == 1
-    this.collection_ref = refs.slice(0, refs.length - (this.is_collection_ref ? 0 : 1)).join('/')
-    this.document_id = this.is_collection_ref ? null : refs[refs.length - 1]
+    this.#document_id = refs.length % 2 == 1 ? null : refs[refs.length - 1]
+    this.#refs = this.#ref_parser(ref)
   }
 
+  #ref_parser(path: string) {
+    const refs_builder = (paths: string[][]) => {
+      const [a, b, ...c] = paths
+      if (!b) return paths
+      const r = a.map(aa => b.map(bb => `${aa}/${bb}`)).flat(2)
+      const d = [r, ...c]
+      return refs_builder(d)
+    }
 
+    const b = path.split('/').map(l => l.split('.'))
 
-  private sync(stream: QueryStream<T>[], from_local: boolean = false) {
+    return refs_builder(b).flat(2) as string[]
+  }
+
+  set_realtime(realtime: boolean) {
+    this.collection_options.realtime = realtime
+  }
+
+  private sync(stream: Array<QueryStream<T> & { ref: string }>, from_local: boolean = false) {
     const realtime = this.collection_options.realtime ?? true
     const actions = { update: false, reindex: false }
-    for (const { data, error } of stream) {
+    for (const { data, error, ref } of stream) {
 
       // Error & paging
       if (error) {
@@ -84,19 +101,21 @@ export class CollectionObservable<T extends { id: string }> extends Observable<C
         actions.update = true
       }
 
+
       if (data?.paging?.n == 0) {
-        this.#state.has_more = data?.paging?.has_more
-        this.#next_cursor = data?.paging?.next_cursor
+        this.#next_cursor[ref] = data?.paging?.next_cursor
+        this.#state.has_more = Object.values(this.#next_cursor).some(v => v && v != '#')
         this.#state.loading = false
         actions.update = true
       }
 
       // Sync 
       for (const change of data?.changes || []) {
+
         if (!change?.data?.id) continue
         const { data: payload, type } = change
         this.$changes.next(change)
-        const index = this.#IdMap.get((payload as any).__local_id || payload.id) ?? -1
+        const index = this.#IdMap.get(payload.id) ?? -1
 
         if (index == -1 && type == 'added') {
           if (
@@ -138,7 +157,8 @@ export class CollectionObservable<T extends { id: string }> extends Observable<C
               __removing: false,
               __remove: () => this.remove(payload?.id),
               __trigger: (name: string, input?: any) => this.trigger(name, input, payload?.id),
-              __update: (input: Partial<T>) => this.update({ ...input, id: payload?.id })
+              __update: (input: Partial<T>) => this.update({ ...input, id: payload?.id }),
+              __collection_ref: change.ref
             })
 
             actions.reindex = true
@@ -196,6 +216,7 @@ export class CollectionObservable<T extends { id: string }> extends Observable<C
     if (!this.ref) return
 
     if (flush) {
+      this.#next_cursor = {}
       this.#subscriptions.forEach(s => s.unsubscribe())
       this.#subscriptions.clear()
     }
@@ -212,18 +233,24 @@ export class CollectionObservable<T extends { id: string }> extends Observable<C
 
     this.#$state.next(this.#state)
 
-    const query = this.collection_options.transporter.query(this.ref, options)
-    const sub = Object.assign(
-      query
-        .pipe(
-          bufferTime(this.collection_options.sync_delay || 500),
-          filter(stream => stream.length > 0)
-        )
-        .subscribe(data => this.sync(data)),
-      { reload: query.reload }
-    )
+    const has_more_data_refs = this.#refs.filter(ref => this.#next_cursor[ref] !== undefined && this.#next_cursor[ref] != '#')
 
-    this.#subscriptions.add(sub)
+    const queries = has_more_data_refs.map(ref => (
+      this
+        .collection_options
+        .transporter
+        .query<T>(ref, { ...options, _cursor: this.#next_cursor[ref] })
+    ))
+
+    const reload = () => queries.map(q => q.reload())
+
+    const $ = merge(...queries.map((q, index) => q.pipe(map(data => ({ ...data, ref: has_more_data_refs[index] }))))).pipe(
+      bufferTime(500),
+      filter(list => list.length > 0),
+      map(data => this.sync(data))
+    )
+    const subscription = Object.assign($.subscribe(), { reload })
+    this.#subscriptions.add(subscription)
   }
 
   public reload() {
@@ -235,9 +262,7 @@ export class CollectionObservable<T extends { id: string }> extends Observable<C
   }
 
   public fetch_more() {
-    const options = this.#state?.options
-    this.#next_cursor && ((options._cursor as any) = this.#next_cursor)
-    this.fetch_data(options)
+    this.fetch_data(this.#state?.options)
   }
 
   public filter(filters: Partial<QueryOption<T>>) {
@@ -245,30 +270,44 @@ export class CollectionObservable<T extends { id: string }> extends Observable<C
   }
 
   public async add(payload: T) {
-    return await this.collection_options.transporter.add(`${this.collection_ref}`, payload as any) as { data: { item: T } }
+    if (this.ref.includes('.')) throw 'INVAILD_COLLECTION_REF_FOR_ADDING'
+    return await this.collection_options.transporter.add(`${this.ref}`, payload as any) as { data: { item: T } }
+  }
+
+  #find_ref_by_id(id: string = this.#document_id) {
+    if (!id) throw 'ID_NOT_FOUND'
+    const collection_ref = this.#state.items[this.#IdMap.get(id)].__collection_ref
+    if (!collection_ref) throw 'COLLECTION_REF_NOT_FOUND'
+    const ref = `${collection_ref}${id ? `/${id}` : ''}`
+    return { ref, id, collection_ref }
   }
 
   public async update({ id: update_payload_id, ...payload }: Partial<T & { id: string }>) {
-    const id = update_payload_id || this.document_id
+    const { id, ref } = this.#find_ref_by_id(update_payload_id)
+
     // Trigger local update
     this.sync([{
+      ref,
       data: {
         changes: [{
           data: { ...payload, id, __updating: true } as any,
-          ref: this.ref,
+          ref,
           type: 'modified'
         }]
       }
     }], true)
-    const ref = `${this.collection_ref}${id ? `/${id}` : ''}`
+
+
+
     try {
       return await this.collection_options.transporter.update(ref, payload as any) as any
     } catch (e) {
       this.sync([{
+        ref,
         data: {
           changes: [{
             data: { id, __updating: false } as any,
-            ref: this.ref,
+            ref,
             type: 'modified'
           }]
         }
@@ -278,27 +317,29 @@ export class CollectionObservable<T extends { id: string }> extends Observable<C
   }
 
   public async remove(remove_document_id?: string) {
-    const id = remove_document_id || this.document_id
+    const { id, ref } = this.#find_ref_by_id(remove_document_id)
+
     this.sync([{
+      ref,
       data: {
         changes: [{
           data: { id, __removing: true } as any,
-          ref: this.ref,
+          ref,
           type: 'modified'
         }]
       }
     }], true)
 
     // Trigger  
-    const ref = `${this.collection_ref}${id ? `/${id}` : ''}`
     try {
       return await this.collection_options.transporter.remove(ref)
     } catch (e) {
       this.sync([{
+        ref,
         data: {
           changes: [{
             data: { id, __removing: false } as any,
-            ref: this.ref,
+            ref,
             type: 'modified'
           }]
         }
@@ -308,8 +349,7 @@ export class CollectionObservable<T extends { id: string }> extends Observable<C
   }
 
   public async trigger<T>(name: string, payload?: object, trigger_document_id?: string) {
-    const id = trigger_document_id || this.document_id
-    const ref = `${this.collection_ref}${id ? `/${id}` : ''}`
+    const { ref } = this.#find_ref_by_id(trigger_document_id)
     return await this.collection_options.transporter.trigger(ref, name, {}, payload as any) as T
   }
 }
