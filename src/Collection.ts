@@ -256,7 +256,7 @@ export class CollectionObservable<T extends { id: string }> extends Observable<C
   }
 
   public fetch_more() {
-    this.fetch_data(this.#state?.options)
+    !this.#state.loading && this.#state.has_more && this.fetch_data(this.#state?.options)
   }
 
   public filter(filters: Partial<QueryOption<T>>) {
