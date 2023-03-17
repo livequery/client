@@ -70,6 +70,7 @@ export class CollectionObservable<T extends { id: string }> extends Observable<C
   }
 
   #ref_parser(path: string) {
+    if (!path) return []
     const refs_builder = (paths: string[][]) => {
       const [a, b, ...c] = paths
       if (!b) return paths
@@ -207,15 +208,19 @@ export class CollectionObservable<T extends { id: string }> extends Observable<C
     flush: boolean = false
   ) {
 
-    if (!this.ref || this.#state.loading) return
+    if (this.#refs.length == 0) return
 
     if (flush) {
       this.#next_cursor = {}
       this.#subscriptions.forEach(s => s.unsubscribe())
       this.#subscriptions.clear()
+      this.#IdMap.clear()
     }
 
-    flush && this.#IdMap.clear()
+    const has_more_data_refs = this.#refs.filter(ref => this.#next_cursor[ref] === undefined || (this.#next_cursor[ref] && this.#next_cursor[ref] != '#'))
+
+    // Load more but no more data || loading 
+    if (!flush && (has_more_data_refs.length == 0 || this.#state.loading)) return
 
     this.#state = {
       ... this.#state,
@@ -226,9 +231,6 @@ export class CollectionObservable<T extends { id: string }> extends Observable<C
     }
 
     this.#$state.next(this.#state)
-
-
-    const has_more_data_refs = this.#refs.filter(ref => this.#next_cursor[ref] === undefined || (this.#next_cursor[ref] && this.#next_cursor[ref] != '#'))
 
     const queries = has_more_data_refs.map(ref => (
       this
