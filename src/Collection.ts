@@ -207,9 +207,7 @@ export class CollectionObservable<T extends { id: string }> extends Observable<C
     flush: boolean = false
   ) {
 
-    const has_more_data_refs = this.#refs.filter(ref => this.#next_cursor[ref] === undefined || (this.#next_cursor[ref] && this.#next_cursor[ref] != '#'))
-
-    if (!this.ref || this.#state.loading || has_more_data_refs.length == 0) return
+    if (!this.ref || this.#state.loading) return
 
     if (flush) {
       this.#next_cursor = {}
@@ -228,6 +226,9 @@ export class CollectionObservable<T extends { id: string }> extends Observable<C
     }
 
     this.#$state.next(this.#state)
+
+
+    const has_more_data_refs = this.#refs.filter(ref => this.#next_cursor[ref] === undefined || (this.#next_cursor[ref] && this.#next_cursor[ref] != '#'))
 
     const queries = has_more_data_refs.map(ref => (
       this
