@@ -78,7 +78,7 @@ export class CollectionObservable<T extends { id: string }> extends Observable<C
       const d = [r, ...c]
       return refs_builder(d)
     }
-    return path.split(',').map(f => refs_builder(f.trim().split('/').map(l => l.split('.')))).flat(2)
+    return path.split(',').map(f => refs_builder(f.trim().split('/').map(l => l.split('|')))).flat(2)
   }
 
   set_realtime(realtime: boolean) {
