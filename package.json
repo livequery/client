@@ -1,9 +1,10 @@
 {
   "name": "@livequery/client",
+  "type": "module",
   "repository": {
     "url": "https://github.com/livequery/client"
   },
-  "version": "1.0.51",
+  "version": "1.0.53",
   "description": "",
   "main": "build/index.js",
   "types": "build/index.d.ts",
@@ -16,7 +17,7 @@
     "uuid": "^8.3.2"
   },
   "devDependencies": {
-    "@livequery/types": "^1.0.31"
+    "@livequery/types": "^1.0.79"
   },
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",

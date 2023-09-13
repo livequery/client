@@ -8,11 +8,12 @@
 			"es2019.array",
 			"ESNext"
 		],
-		"module": "CommonJS",
-		"target": "ES6",
+		"module": "nodenext",
+		"target": "ESNext",
 		"outDir": "build",
 		"esModuleInterop": true,
-		"sourceMap": false
+		"sourceMap": false,
+		"importHelpers": true
 	},
 	"include": [
 		"src"
@@ -24,5 +25,7 @@
 		"bin",
 		"tests"
 	],
-	"files": ["src/index.ts"]
+	"files": [
+		"src/index.ts"
+	]
 }

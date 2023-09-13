@@ -1,11 +1,10 @@
 
-import { Subject, Subscription, Observable, from, merge } from 'rxjs'
-import { ErrorInfo, QueryOption, QueryStream, Transporter, UpdatedData } from '@livequery/types'
-import { get_sort_function } from './helpers/get_sort_function'
-import { bufferCount, bufferTime, filter, map, mergeAll, toArray } from 'rxjs/operators'
-import { v4 } from 'uuid'
+import { Subject, Subscription, Observable, merge } from 'rxjs'
+import { ErrorInfo, LivequeryBaseEntity, QueryOption, QueryStream, Transporter, UpdatedData } from '@livequery/types'
+import { get_sort_function } from './helpers/get_sort_function.js'
+import { bufferTime, filter, map } from 'rxjs/operators'
 
-export type CollectionOption<T = any> = {
+export type CollectionOption<T extends LivequeryBaseEntity = LivequeryBaseEntity> = {
   transporter: Transporter,
   sync_delay?: number
   filters?: Partial<QueryOption<T>>
@@ -20,10 +19,10 @@ export type SmartQueryItem<T> = T & {
   __remove: Function
   __update: (data: Partial<T>) => any
   __trigger: (name: string, payload?: any) => any
-  __collection_ref: string
+  __ref: string
 }
 
-type CollectionStream<T> = {
+type CollectionStream<T extends LivequeryBaseEntity = LivequeryBaseEntity> = {
   items: SmartQueryItem<T>[],
   error?: ErrorInfo,
   has_more: boolean
@@ -32,7 +31,7 @@ type CollectionStream<T> = {
 }
 
 
-export class CollectionObservable<T extends { id: string }> extends Observable<CollectionStream<T>>{
+export class CollectionObservable<T extends LivequeryBaseEntity = LivequeryBaseEntity> extends Observable<CollectionStream<T>>{
 
 
   public readonly $changes = new Subject<UpdatedData<T>>()
@@ -153,7 +152,7 @@ export class CollectionObservable<T extends { id: string }> extends Observable<C
               __remove: () => this.remove(payload?.id),
               __trigger: (name: string, input?: any) => this.trigger(name, input, payload?.id),
               __update: (input: Partial<T>) => this.update({ ...input, id: payload?.id }),
-              __collection_ref: change.ref
+              __ref: change.ref
             })
 
             actions.reindex = true
@@ -266,20 +265,23 @@ export class CollectionObservable<T extends { id: string }> extends Observable<C
     this.fetch_data(filters, true)
   }
 
-  public async add(payload: T) {
-    if (this.ref.includes('.')) throw 'INVAILD_COLLECTION_REF_FOR_ADDING'
-    return await this.collection_options.transporter.add(`${this.ref}`, payload as any) as { data: { item: T } }
-  }
+
 
   #find_ref_by_id(id: string) {
-    if (!id) throw 'ID_NOT_FOUND'
-    const collection_ref = this.#state.items[this.#IdMap.get(id)].__collection_ref
-    if (!collection_ref) throw 'COLLECTION_REF_NOT_FOUND'
-    const ref = `${collection_ref}${id ? `/${id}` : ''}`
+    if (!id) return { ref: this.ref, collection_ref: this.ref }
+    const origin_ref = this.#state.items[this.#IdMap.get(id)].__ref
+    if (!origin_ref) throw 'COLLECTION_REF_NOT_FOUND'
+    const refs = origin_ref.split('/')
+    const collection_ref = refs.slice(0, refs.length - (refs.length % 2 == 1 ? 0 : 1)).join('/')
+    const ref = `${collection_ref}/${id}`
     return { ref, id, collection_ref }
   }
 
-  public async update({ id: update_payload_id, ...payload }: Partial<T & { id: string }>) {
+  public async add(payload: Partial<T>) {
+    return await this.collection_options.transporter.add(`${this.ref}`, payload as any) as { data: { item: T } }
+  }
+
+  public async update({ id: update_payload_id, ...payload }: Partial<T>) {
     const { id, ref } = this.#find_ref_by_id(update_payload_id)
 
     // Trigger local update
@@ -297,7 +299,7 @@ export class CollectionObservable<T extends { id: string }> extends Observable<C
 
 
     try {
-      return await this.collection_options.transporter.update(ref, payload as any) as any
+      return await this.collection_options.transporter.update(ref, payload) as any
     } catch (e) {
       this.sync([{
         ref,
