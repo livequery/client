@@ -1,7 +1,6 @@
 
 import { Subject, Subscription, Observable, merge } from 'rxjs'
 import { ErrorInfo, LivequeryBaseEntity, QueryOption, QueryStream, Transporter, UpdatedData } from '@livequery/types'
-import { get_sort_function } from './helpers/get_sort_function.js'
 import { bufferTime, filter, map } from 'rxjs/operators'
 
 export type CollectionOption<T extends LivequeryBaseEntity = LivequeryBaseEntity> = {
@@ -37,40 +36,41 @@ export class CollectionObservable<T extends LivequeryBaseEntity = LivequeryBaseE
   public readonly $changes = new Subject<UpdatedData<T>>()
 
 
-  #$state = new Subject<CollectionStream<T>>()
-  #subscriptions = new Set<Subscription & { reload: Function }>()
-  #state: CollectionStream<T>
+  #queries = new Set<Subscription & { reload: Function }>()
   #next_cursor: { [ref: string]: string } = {}
   #IdMap = new Map<string, number>()
   #refs: string[] = []
 
 
+  value: CollectionStream<T> = {
+    has_more: false,
+    items: [] as SmartQueryItem<T>[],
+    options: {},
+    loading: false
+  }
+  $ = new Subject<CollectionStream<T>>()
 
-
-  constructor(private ref: string, private collection_options: CollectionOption<T>) {
+  constructor(private ref: string | false | null | '' | undefined, private collection_options: CollectionOption<T>) {
     super(o => {
-
-      this.#state = { items: [], options: collection_options.filters, has_more: false }
-      const subscription = this.#$state.subscribe(o)
-
+      const subscription = this.$.subscribe(o)
       const auto_reload_interval = collection_options.reload_interval && setInterval(
         () => this.reload(),
         collection_options.reload_interval
       )
-
       return () => {
-        this.#subscriptions.forEach(s => s.unsubscribe())
         subscription.unsubscribe()
+        this.#queries.forEach(s => s.unsubscribe())
         clearInterval(auto_reload_interval)
       }
     })
-    if (ref.startsWith('/') || ref.endsWith('/')) throw 'INVAILD_REF_FORMAT'
+    if (collection_options.filters) this.value.options = collection_options.filters
+    if (ref && (ref.startsWith('/') || ref.endsWith('/'))) throw 'INVAILD_REF_FORMAT'
     this.#refs = this.#ref_parser(ref)
   }
 
-  #ref_parser(path: string) {
+  #ref_parser(path: string | false | null | '' | undefined) {
     if (!path) return []
-    const refs_builder = (paths: string[][]) => {
+    const refs_builder = (paths: string[][]): string[][] => {
       const [a, b, ...c] = paths
       if (!b) return paths
       const r = a.map(aa => b.map(bb => `${aa}/${bb}`)).flat(2)
@@ -84,22 +84,22 @@ export class CollectionObservable<T extends LivequeryBaseEntity = LivequeryBaseE
     this.collection_options.realtime = realtime
   }
 
-  private sync(stream: Array<QueryStream<T> & { ref: string }>, from_local: boolean = false) {
+  #sync(stream: Array<QueryStream<T> & { ref: string }>, from_local: boolean = false) {
     const realtime = this.collection_options.realtime ?? true
     const actions = { update: false, reindex: false }
     for (const { data, error, ref } of stream) {
 
       // Error & paging
       if (error) {
-        this.#state.error = error
+        this.value.error = error
         actions.update = true
       }
 
 
       if (data?.paging?.n == 0) {
         this.#next_cursor[ref] = data?.paging?.next_cursor
-        this.#state.has_more = Object.values(this.#next_cursor).some(v => v && v != '#')
-        this.#state.loading = false
+        this.value.has_more = Object.values(this.#next_cursor).some(v => v && v != '#')
+        this.value.loading = false
         actions.update = true
       }
 
@@ -118,33 +118,30 @@ export class CollectionObservable<T extends LivequeryBaseEntity = LivequeryBaseE
             || (
               // Is realtime update that match filters
               (realtime || from_local) && Object
-                .keys(this.#state.options || {})
+                .keys(this.value.options || {})
                 .filter(key => !key.includes('_'))
                 .every(key => {
                   try {
                     const [field, expression] = key.split(':')
-                    const a = payload[field]
-                    const b = this.#state.options?.[field]
+                    const a = payload[field as keyof typeof payload]
+                    const b = this.value.options?.[field as keyof QueryOption<T>]
                     if (!expression) return a == b
                     if (expression == 'ne') return a != b
-                    if (expression == 'lt') return a < b
-                    if (expression == 'lte') return a <= b
-                    if (expression == 'gt') return a > b
-                    if (expression == 'gte') return a >= b
-                    if (expression == 'in-array') return a?.includes(b)
-                    if (expression == 'contains') return a?.some(e => b?.includes(e))
-                    if (expression == 'not-contains') return a?.every(e => !b?.includes(e))
+                    if (expression == 'lt') return typeof a == 'number' && typeof b == 'number' && a < b
+                    if (expression == 'lte') return typeof a == 'number' && typeof b == 'number' && a <= b
+                    if (expression == 'gt') return typeof a == 'number' && typeof b == 'number' && a > b
+                    if (expression == 'gte') return typeof a == 'number' && typeof b == 'number' && a >= b
+                    if (expression == 'in' || expression == 'like') return Array.isArray(a) && a?.includes(b)
                     if (expression == 'between') return (
                       b[0] <= a && a <= b[1]
                     )
-                    if (expression == 'like') return a.includes(b)
                   } catch (e) { }
                   return false
                 })
             )
           ) {
 
-            this.#state.items.push({
+            this.value.items.push({
               ...payload as T,
               __adding: false,
               __updating: false,
@@ -167,8 +164,8 @@ export class CollectionObservable<T extends LivequeryBaseEntity = LivequeryBaseE
             if (Object.keys(payload).some(key => ['created_at', this.collection_options?.filters?._order_by].includes(key))) {
               actions.reindex = true
             }
-            this.#state.items[index] = {
-              ...this.#state.items[index],
+            this.value.items[index] = {
+              ...this.value.items[index],
               __adding: false,
               __updating: false,
               __removing: false,
@@ -180,7 +177,7 @@ export class CollectionObservable<T extends LivequeryBaseEntity = LivequeryBaseE
           if (type == 'removed') {
             actions.reindex = true
             actions.update = true
-            this.#state.items.splice(index, 1)
+            this.value.items.splice(index, 1)
             for (const [document_id, i] of this.#IdMap) {
               i == index && this.#IdMap.delete(document_id)
               i > index && this.#IdMap.set(document_id, i - 1)
@@ -191,15 +188,23 @@ export class CollectionObservable<T extends LivequeryBaseEntity = LivequeryBaseE
 
     }
     if (actions.reindex) {
-      this.#state.items = this.#state.items.sort(get_sort_function(
-        this.#state.items[0],
-        this.collection_options?.filters?._order_by as string || 'created_at',
-        this.collection_options?.filters?._sort
-      ))
+      const _sort = this.collection_options?.filters?._sort || 'desc'
+      const _order_by = this.collection_options?.filters?._order_by as string || 'created_at'
+      this.value.items = this.value.items.sort(
+        (a: LivequeryBaseEntity, b: LivequeryBaseEntity) => {
+          const ka = a[_order_by as keyof LivequeryBaseEntity]
+          const kb = b[_order_by as keyof LivequeryBaseEntity]
+          if (typeof ka == 'string' && typeof kb == 'string') return ka.localeCompare(ka) * (_sort == 'desc' ? -1 : 1)
+          if (
+            (typeof ka == 'number' || typeof ka == 'number')
+            && (typeof kb == 'number' || typeof kb == 'number')
+          ) return (ka - kb) * (_sort == 'desc' ? -1 : 1)
+          return 1
+        })
       this.#IdMap.clear()
-      this.#state.items.map((item, index) => this.#IdMap.set(item.id, index))
+      this.value.items.map((item, index) => this.#IdMap.set(item.id, index))
     }
-    actions.update && this.#$state.next(this.#state)
+    actions.update && this.$.next(this.value)
   }
 
   private fetch_data(
@@ -211,25 +216,25 @@ export class CollectionObservable<T extends LivequeryBaseEntity = LivequeryBaseE
 
     if (flush) {
       this.#next_cursor = {}
-      this.#subscriptions.forEach(s => s.unsubscribe())
-      this.#subscriptions.clear()
+      this.#queries.forEach(s => s.unsubscribe())
+      this.#queries.clear()
       this.#IdMap.clear()
     }
 
     const has_more_data_refs = this.#refs.filter(ref => this.#next_cursor[ref] === undefined || (this.#next_cursor[ref] && this.#next_cursor[ref] != '#'))
 
     // Load more but no more data || loading 
-    if (!flush && (has_more_data_refs.length == 0 || this.#state.loading)) return
+    if (!flush && (has_more_data_refs.length == 0 || this.value.loading)) return
 
-    this.#state = {
-      ... this.#state,
-      items: flush ? [] : this.#state.items,
-      error: null,
+    this.value = {
+      ... this.value,
+      items: flush ? [] : this.value.items,
+      error: undefined,
       loading: true,
       options
     }
 
-    this.#$state.next(this.#state)
+    this.$.next(this.value)
 
     const queries = has_more_data_refs.map(ref => (
       this
@@ -243,14 +248,14 @@ export class CollectionObservable<T extends LivequeryBaseEntity = LivequeryBaseE
     const $ = merge(...queries.map((q, index) => q.pipe(map(data => ({ ...data, ref: has_more_data_refs[index] }))))).pipe(
       bufferTime(500),
       filter(list => list.length > 0),
-      map(data => this.sync(data))
+      map(data => this.#sync(data))
     )
     const subscription = Object.assign($.subscribe(), { reload })
-    this.#subscriptions.add(subscription)
+    this.#queries.add(subscription)
   }
 
   public reload() {
-    this.#subscriptions.forEach(s => s.reload())
+    this.#queries.forEach(s => s.reload())
   }
 
   public reset() {
@@ -258,7 +263,7 @@ export class CollectionObservable<T extends LivequeryBaseEntity = LivequeryBaseE
   }
 
   public fetch_more() {
-    this.fetch_data(this.#state?.options)
+    this.fetch_data(this.value?.options)
   }
 
   public filter(filters: Partial<QueryOption<T>>) {
@@ -267,25 +272,27 @@ export class CollectionObservable<T extends LivequeryBaseEntity = LivequeryBaseE
 
 
 
-  #find_ref_by_id(id: string) {
-    if (!id) return { ref: this.ref, collection_ref: this.ref }
-    const origin_ref = this.#state.items[this.#IdMap.get(id)].__ref
+  #find_ref_by_id(id: string | undefined | '' | false) {
+    if (!id || !this.ref) return { ref: this.ref, collection_ref: this.ref }
+    const index = this.#IdMap.get(id)
+    if (index == undefined) return {}
+    const origin_ref = this.value.items[index].__ref
     if (!origin_ref) throw 'COLLECTION_REF_NOT_FOUND'
     const refs = origin_ref.split('/')
     const collection_ref = refs.slice(0, refs.length - (refs.length % 2 == 1 ? 0 : 1)).join('/')
     const ref = `${collection_ref}/${id}`
-    return { ref, id, collection_ref }
+    return { ref, id, collection_ref, index }
   }
 
-  public async add(payload: Partial<T>) {
-    return await this.collection_options.transporter.add(`${this.ref}`, payload as any) as { data: { item: T } }
+  public async add<R = { data: { item: T } }>(payload: Partial<T>) {
+    return await this.collection_options.transporter.add<T, R>(`${this.ref}`, payload)
   }
 
-  public async update({ id: update_payload_id, ...payload }: Partial<T>) {
-    const { id, ref } = this.#find_ref_by_id(update_payload_id)
-
+  public async update<R = { data: { item: T } }>({ id: update_payload_id, ...payload }: Partial<T>) {
+    const { id, ref } = this.#find_ref_by_id(update_payload_id as string)
+    if (!ref) return
     // Trigger local update
-    this.sync([{
+    this.#sync([{
       ref,
       data: {
         changes: [{
@@ -299,9 +306,9 @@ export class CollectionObservable<T extends LivequeryBaseEntity = LivequeryBaseE
 
 
     try {
-      return await this.collection_options.transporter.update(ref, payload) as any
+      return await this.collection_options.transporter.update<T, R>(ref, payload as any)
     } catch (e) {
-      this.sync([{
+      this.#sync([{
         ref,
         data: {
           changes: [{
@@ -315,10 +322,11 @@ export class CollectionObservable<T extends LivequeryBaseEntity = LivequeryBaseE
     }
   }
 
-  public async remove(remove_document_id?: string) {
+  public async remove<R = { data: { item: T } }>(remove_document_id?: string) {
     const { id, ref } = this.#find_ref_by_id(remove_document_id)
+    if (!ref) return
 
-    this.sync([{
+    this.#sync([{
       ref,
       data: {
         changes: [{
@@ -333,7 +341,7 @@ export class CollectionObservable<T extends LivequeryBaseEntity = LivequeryBaseE
     try {
       return await this.collection_options.transporter.remove(ref)
     } catch (e) {
-      this.sync([{
+      this.#sync([{
         ref,
         data: {
           changes: [{
@@ -347,9 +355,10 @@ export class CollectionObservable<T extends LivequeryBaseEntity = LivequeryBaseE
     }
   }
 
-  public async trigger<T>(name: string, payload?: object, trigger_document_id?: string) {
+  public async trigger<R>(name: string, payload?: object, trigger_document_id?: string, query: { [key: string]: string | number | boolean } = {}) {
     const { ref } = this.#find_ref_by_id(trigger_document_id)
-    return await this.collection_options.transporter.trigger(ref, name, {}, payload as any) as T
+    if (!ref) return
+    return await this.collection_options.transporter.trigger<any, any, R>(ref, name, query, payload)
   }
 }
 
