@@ -1,5 +1,5 @@
 
-import { Subject, Subscription, Observable, merge } from 'rxjs'
+import { Subject, Subscription, Observable, merge, ReplaySubject } from 'rxjs'
 import { ErrorInfo, LivequeryBaseEntity, QueryOption, QueryStream, Transporter, UpdatedData } from '@livequery/types'
 import { bufferTime, filter, map } from 'rxjs/operators'
 
@@ -48,7 +48,7 @@ export class CollectionObservable<T extends LivequeryBaseEntity = LivequeryBaseE
     options: {},
     loading: false
   }
-  $ = new Subject<CollectionStream<T>>()
+  $ = new ReplaySubject<CollectionStream<T>>(1)
 
   constructor(private ref: string | false | null | '' | undefined, private collection_options: CollectionOption<T>) {
     super(o => {
@@ -211,7 +211,7 @@ export class CollectionObservable<T extends LivequeryBaseEntity = LivequeryBaseE
     options: Partial<QueryOption<T>> = {},
     flush: boolean = false
   ) {
-
+    if (!this.ref) return
     if (this.#refs.length == 0) return
 
     if (flush) {
@@ -222,8 +222,6 @@ export class CollectionObservable<T extends LivequeryBaseEntity = LivequeryBaseE
     }
 
     const has_more_data_refs = this.#refs.filter(ref => this.#next_cursor[ref] === undefined || (this.#next_cursor[ref] && this.#next_cursor[ref] != '#'))
-
-    // Load more but no more data || loading 
     if (!flush && (has_more_data_refs.length == 0 || this.value.loading)) return
 
     this.value = {
