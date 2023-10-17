@@ -63,6 +63,7 @@ export class CollectionObservable<T extends LivequeryBaseEntity = LivequeryBaseE
         clearInterval(auto_reload_interval)
       }
     })
+    this.collection_options.filters = this.collection_options.filters || {} 
     if (collection_options.filters) this.value.options = collection_options.filters
     if (ref && (ref.startsWith('/') || ref.endsWith('/'))) throw 'INVAILD_REF_FORMAT'
     this.#refs = this.#ref_parser(ref)
