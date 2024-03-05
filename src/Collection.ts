@@ -1,6 +1,6 @@
 
 import { Subject, Subscription, Observable, merge, ReplaySubject } from 'rxjs'
-import { ErrorInfo, LivequeryBaseEntity, QueryOption, QueryStream, Transporter, UpdatedData } from '@livequery/types'
+import { ErrorInfo, LivequeryBaseEntity, QueryOption, QueryStream, Transporter, UpdatedData, Response, DocumentResponse } from '@livequery/types'
 import { bufferTime, filter, map } from 'rxjs/operators'
 
 export type CollectionOption<T extends LivequeryBaseEntity = LivequeryBaseEntity> = {
@@ -21,13 +21,15 @@ export type SmartQueryItem<T> = T & {
   __ref: string
 }
 
-type CollectionStream<T extends LivequeryBaseEntity = LivequeryBaseEntity> = {
+export type CollectionStream<T extends LivequeryBaseEntity = LivequeryBaseEntity> = {
   items: SmartQueryItem<T>[],
   error?: ErrorInfo,
   has_more: boolean
   loading?: boolean,
-  options: Partial<QueryOption<T>>
+  filters: Partial<QueryOption<T>>
 }
+
+
 
 
 export class CollectionObservable<T extends LivequeryBaseEntity = LivequeryBaseEntity> extends Observable<CollectionStream<T>>{
@@ -45,7 +47,7 @@ export class CollectionObservable<T extends LivequeryBaseEntity = LivequeryBaseE
   value: CollectionStream<T> = {
     has_more: false,
     items: [] as SmartQueryItem<T>[],
-    options: {},
+    filters: {},
     loading: false
   }
   $ = new ReplaySubject<CollectionStream<T>>(1)
@@ -63,8 +65,8 @@ export class CollectionObservable<T extends LivequeryBaseEntity = LivequeryBaseE
         clearInterval(auto_reload_interval)
       }
     })
-    this.collection_options.filters = this.collection_options.filters || {} 
-    if (collection_options.filters) this.value.options = collection_options.filters
+    this.collection_options.filters = this.collection_options.filters || {}
+    if (collection_options.filters) this.value.filters = collection_options.filters
     if (ref && (ref.startsWith('/') || ref.endsWith('/'))) throw 'INVAILD_REF_FORMAT'
     this.#refs = this.#ref_parser(ref)
   }
@@ -119,13 +121,13 @@ export class CollectionObservable<T extends LivequeryBaseEntity = LivequeryBaseE
             || (
               // Is realtime update that match filters
               (realtime || from_local) && Object
-                .keys(this.value.options || {})
+                .keys(this.value.filters || {})
                 .filter(key => !key.includes('_'))
                 .every(key => {
                   try {
                     const [field, expression] = key.split(':')
                     const a = payload[field as keyof typeof payload]
-                    const b = this.value.options?.[field as keyof QueryOption<T>]
+                    const b = this.value.filters?.[field as keyof QueryOption<T>]
                     if (!expression) return a == b
                     if (expression == 'ne') return a != b
                     if (expression == 'lt') return typeof a == 'number' && typeof b == 'number' && a < b
@@ -209,7 +211,7 @@ export class CollectionObservable<T extends LivequeryBaseEntity = LivequeryBaseE
   }
 
   private fetch_data(
-    options: Partial<QueryOption<T>> = {},
+    filters: Partial<QueryOption<T>> = {},
     flush: boolean = false
   ) {
     if (!this.ref) return
@@ -230,7 +232,7 @@ export class CollectionObservable<T extends LivequeryBaseEntity = LivequeryBaseE
       items: flush ? [] : this.value.items,
       error: undefined,
       loading: true,
-      options
+      filters
     }
 
     this.$.next(this.value)
@@ -239,7 +241,7 @@ export class CollectionObservable<T extends LivequeryBaseEntity = LivequeryBaseE
       this
         .collection_options
         .transporter
-        .query<T>(ref, { ...options, _cursor: this.#next_cursor[ref] })
+        .query<T>(ref, { ...filters, _cursor: this.#next_cursor[ref] })
     ))
 
     const reload = () => queries.map(q => q.reload())
@@ -262,7 +264,7 @@ export class CollectionObservable<T extends LivequeryBaseEntity = LivequeryBaseE
   }
 
   public fetch_more() {
-    this.fetch_data(this.value?.options)
+    this.fetch_data(this.value?.filters)
   }
 
   public filter(filters: Partial<QueryOption<T>>) {
@@ -283,13 +285,13 @@ export class CollectionObservable<T extends LivequeryBaseEntity = LivequeryBaseE
     return { ref, id, collection_ref, index }
   }
 
-  public async add<R = { data: { item: T } }>(payload: Partial<T>) {
-    return await this.collection_options.transporter.add<T, R>(`${this.ref}`, payload)
+  public async add(payload: Partial<T>) {
+    return await this.collection_options.transporter.add<T, DocumentResponse<T>>(`${this.ref}`, payload)
   }
 
-  public async update<R = { data: { item: T } }>({ id: update_payload_id, ...payload }: Partial<T>) {
+  public async update({ id: update_payload_id, ...payload }: Partial<T>) {
     const { id, ref } = this.#find_ref_by_id(update_payload_id as string)
-    if (!ref) return
+    if (!ref) return  
     // Trigger local update
     this.#sync([{
       ref,
@@ -305,7 +307,7 @@ export class CollectionObservable<T extends LivequeryBaseEntity = LivequeryBaseE
 
 
     try {
-      return await this.collection_options.transporter.update<T, R>(ref, payload as any)
+      return await this.collection_options.transporter.update<T, DocumentResponse<T>>(ref, payload as any)
     } catch (e) {
       this.#sync([{
         ref,
@@ -321,7 +323,7 @@ export class CollectionObservable<T extends LivequeryBaseEntity = LivequeryBaseE
     }
   }
 
-  public async remove<R = { data: { item: T } }>(remove_document_id?: string) {
+  public async remove(remove_document_id?: string) {
     const { id, ref } = this.#find_ref_by_id(remove_document_id)
     if (!ref) return
 
