@@ -274,7 +274,11 @@ export class CollectionObservable<T extends LivequeryBaseEntity = LivequeryBaseE
     const state = {
       ... this.$.getValue(),
       items: flush ? [] : this.$.getValue().items,
-      loading
+      loading,
+      options: {
+        ... this.$.getValue().options || {},
+        ... options 
+      }
     }
 
     if (flush) {
