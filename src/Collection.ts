@@ -18,7 +18,7 @@ export type SmartQueryItem<T> = T & {
   __update: (data: Partial<T>) => any
   __updating: boolean
   __adding: boolean
-  __trigger: <R extends {}>(name: string, payload?: any) => Promise<Response<R>>
+  __trigger: <R extends {}>(name: string, payload?: any, query?:any) => Promise<Response<R>>
   __ref: string
 }
 
@@ -145,7 +145,7 @@ export class CollectionObservable<T extends LivequeryBaseEntity = LivequeryBaseE
               __updating: false,
               __removing: false,
               __remove: () => this.remove(payload?.id),
-              __trigger: <R extends {}>(name: string, input?: any) => this.trigger<R>(name, input, payload?.id),
+              __trigger: <R extends {}>(name: string, input: any = undefined, query: any) => this.trigger<R>(name, input, payload?.id, query),
               __update: (input: Partial<T>) => this.update({ ...input, id: payload?.id }),
               __ref: change.ref
             }
@@ -277,7 +277,7 @@ export class CollectionObservable<T extends LivequeryBaseEntity = LivequeryBaseE
       loading,
       options: {
         ... this.$.getValue().options || {},
-        ... options 
+        ...options
       }
     }
 
@@ -455,7 +455,7 @@ export class CollectionObservable<T extends LivequeryBaseEntity = LivequeryBaseE
   public async trigger<R extends {}>(name: string, payload?: object, trigger_document_id?: string, query: { [key: string]: string | number | boolean } = {}) {
     const { ref } = this.#find_ref_by_id(trigger_document_id)
     if (!ref) throw new Error('INVAILD_REF')
-    return await this.collection_options.transporter.trigger<R>(ref, name, query, payload)
+    return await this.collection_options.transporter.trigger<R>(ref, name, payload, query)
   }
 }
 
