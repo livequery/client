@@ -18,7 +18,7 @@ export type SmartQueryItem<T> = T & {
   __update: (data: Partial<T>) => any
   __updating: boolean
   __adding: boolean
-  __trigger: <R extends {}>(name: string, payload?: any, query?:any) => Promise<Response<R>>
+  __trigger: <R extends {}>(name: string, payload?: any, query?: any) => Promise<Response<R>>
   __ref: string
 }
 
@@ -217,7 +217,7 @@ export class CollectionObservable<T extends LivequeryBaseEntity = LivequeryBaseE
     }
 
 
-    if (direction) {
+    if (direction && stream.some(s => !!s.data?.paging)) {
 
       // Cache paging
       this.#pages.clear()
