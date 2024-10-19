@@ -45,15 +45,16 @@ export class CollectionObservable<T extends LivequeryBaseEntity = LivequeryBaseE
   #refs: string[] = []
 
 
-  $ = new BehaviorSubject<CollectionStream<T>>({
-    items: [] as SmartQueryItem<T>[],
-    loading: false,
-    options: {},
-    paging: {}
-  })
+  $: BehaviorSubject<CollectionStream<T>>
 
   constructor(private ref: string | false | null | '' | undefined, private collection_options: CollectionOption<T>) {
     super(o => {
+      this.$ = new BehaviorSubject<CollectionStream<T>>({
+        items: [] as SmartQueryItem<T>[],
+        loading: false,
+        options: collection_options.options || {},
+        paging: {}
+      })
       const linker = this.$.subscribe(o)
       return () => {
         linker.unsubscribe()
@@ -112,31 +113,31 @@ export class CollectionObservable<T extends LivequeryBaseEntity = LivequeryBaseE
           if (
             // Is first value from HTTP query
             true
-            // || (
-            //   // Is realtime update that match filters
-            //   (realtime || from_local) && Object
-            //     .keys(state.options || {})
-            //     .filter(key => !key.includes('_'))
-            //     .every(key => {
-            //       try {
-            //         const [field, expression] = key.split(':')
-            //         const a = payload[field as keyof typeof payload] as number
-            //         const b = state.options?.[field as keyof QueryOption<T>] as any as number
-            //         if (!expression) return a == b
-            //         if (expression == 'ne') return a != b
-            //         if (expression == 'lt') return typeof a == 'number' && typeof b == 'number' && a < b
-            //         if (expression == 'lte') return typeof a == 'number' && typeof b == 'number' && a <= b
-            //         if (expression == 'gt') return typeof a == 'number' && typeof b == 'number' && a > b
-            //         if (expression == 'gte') return typeof a == 'number' && typeof b == 'number' && a >= b
-            //         if (expression == 'in' || expression == 'like') return Array.isArray(a) && a?.includes(b)
-            //         if (expression == 'between') {
-            //           const [x, y] = b as any as number[]
-            //           return x <= a && a <= y
-            //         }
-            //       } catch (e) { }
-            //       return false
-            //     })
-            // )
+            || (
+              // Is realtime update that match filters
+              (realtime || from_local) && Object
+                .keys(state.options || {})
+                .filter(key => !key.includes('_'))
+                .every(key => {
+                  try {
+                    const [field, expression] = key.split(':')
+                    const a = payload[field as keyof typeof payload] as number
+                    const b = state.options?.[field as keyof QueryOption<T>] as any as number
+                    if (!expression) return a == b
+                    if (expression == 'ne') return a != b
+                    if (expression == 'lt') return typeof a == 'number' && typeof b == 'number' && a < b
+                    if (expression == 'lte') return typeof a == 'number' && typeof b == 'number' && a <= b
+                    if (expression == 'gt') return typeof a == 'number' && typeof b == 'number' && a > b
+                    if (expression == 'gte') return typeof a == 'number' && typeof b == 'number' && a >= b
+                    if (expression == 'in' || expression == 'like') return Array.isArray(a) && a?.includes(b)
+                    if (expression == 'between') {
+                      const [x, y] = b as any as number[]
+                      return x <= a && a <= y
+                    }
+                  } catch (e) { }
+                  return false
+                })
+            )
           ) {
 
             const item = {
@@ -217,7 +218,13 @@ export class CollectionObservable<T extends LivequeryBaseEntity = LivequeryBaseE
     }
 
 
-    if (direction && stream.some(s => !!s.data?.paging)) {
+    if (state.paging.count) {
+      const d = state.items.length - state.paging.count.current
+      state.paging.count.current = state.items.length
+      state.paging.count.total += d
+    }
+
+    if (direction && stream.some(d => d.data?.paging)) {
 
       // Cache paging
       this.#pages.clear()
