@@ -1,5 +1,5 @@
 
-import { Subject, Subscription, Observable, merge, BehaviorSubject, timer, firstValueFrom } from 'rxjs'
+import { Subject, Subscription, Observable, merge, BehaviorSubject } from 'rxjs'
 import { LivequeryBaseEntity, QueryOption, QueryStream, Transporter, UpdatedData, Paging, Response } from '@livequery/types'
 import { bufferTime, filter, finalize, first, map, share, skip, tap, toArray } from 'rxjs/operators'
 
@@ -33,7 +33,7 @@ export type CollectionStream<T extends LivequeryBaseEntity = LivequeryBaseEntity
 }
 
 
-export class CollectionObservable<T extends LivequeryBaseEntity = LivequeryBaseEntity> extends Observable<CollectionStream<T>> {
+export class CollectionObservable<T extends LivequeryBaseEntity = LivequeryBaseEntity> extends BehaviorSubject<CollectionStream<T>> {
 
 
   public readonly $changes = new Subject<UpdatedData<T>>()
@@ -45,25 +45,24 @@ export class CollectionObservable<T extends LivequeryBaseEntity = LivequeryBaseE
   #refs: string[] = []
 
 
-  $: BehaviorSubject<CollectionStream<T>> = new BehaviorSubject<CollectionStream<T>>({
-    items: [] as SmartQueryItem<T>[],
-    loading: false,
-    options: {},
-    paging: {}
-  })
+  // $: BehaviorSubject<CollectionStream<T>> = new BehaviorSubject<CollectionStream<T>>({
+  //   items: [] as SmartQueryItem<T>[],
+  //   loading: false,
+  //   options: {},
+  //   paging: {}
+  // }) 
+  unsubscribe() {
+    super.unsubscribe();
+    this.#queries.forEach(s => s.unsubscribe())
+  }
 
   constructor(private ref: string | false | null | '' | undefined, private collection_options: CollectionOption<T>) {
-    super(o => {
-      this.$.next({
-        ... this.$.getValue(),
-        options: collection_options.options || {}
-      })
-      const linker = this.$.subscribe(o)
-      return () => {
-        linker.unsubscribe()
-        this.#queries.forEach(s => s.unsubscribe())
-      }
-    })
+    super({
+      items: [] as SmartQueryItem<T>[],
+      loading: false,
+      paging: {},
+      options: collection_options.options || {}
+    }) 
     if (ref && (ref.startsWith('/') || ref.endsWith('/'))) throw 'INVAILD_REF_FORMAT'
     this.#refs = this.#ref_parser(ref)
   }
@@ -85,7 +84,7 @@ export class CollectionObservable<T extends LivequeryBaseEntity = LivequeryBaseE
   }
 
   #sync(stream: Array<QueryStream<T> & { ref: string }>, from_local: boolean = false, direction?: LoadingIndicator) {
-    const state = this.$.getValue()
+    const state = this.getValue()
     const realtime = this.collection_options.realtime ?? true
     const actions = { update: false, reindex: false }
 
@@ -258,7 +257,7 @@ export class CollectionObservable<T extends LivequeryBaseEntity = LivequeryBaseE
 
     }
 
-    actions.update && this.$.next(state)
+    actions.update && this.next(state)
   }
 
 
@@ -270,7 +269,7 @@ export class CollectionObservable<T extends LivequeryBaseEntity = LivequeryBaseE
   ) {
     if (!this.ref) return
     if (this.#refs.length == 0) return
-    if (this.$.getValue().loading) return
+    if (this.getValue().loading) return
 
     this.collection_options.options = options
 
@@ -282,11 +281,11 @@ export class CollectionObservable<T extends LivequeryBaseEntity = LivequeryBaseE
     this.#sorters.every(a => a.key != 'id') && this.#sorters.push({ key: 'id', order: -1 })
 
     const state = {
-      ... this.$.getValue(),
-      items: flush ? [] : this.$.getValue().items,
+      ... this.getValue(),
+      items: flush ? [] : this.getValue().items,
       loading,
       options: {
-        ... this.$.getValue().options || {},
+        ... this.getValue().options || {},
         ...options
       }
     }
@@ -304,10 +303,10 @@ export class CollectionObservable<T extends LivequeryBaseEntity = LivequeryBaseE
       return loading == 'forward' ? paging.has.next : paging.has.prev
     })
 
-    const no_more_data = !flush && (remain_data_refs.length == 0 || this.$.getValue().loading)
+    const no_more_data = !flush && (remain_data_refs.length == 0 || this.getValue().loading)
     if (no_more_data) return
 
-    this.$.next(state)
+    this.next(state)
 
 
     const queries = remain_data_refs.map((ref, index) => {
@@ -358,13 +357,13 @@ export class CollectionObservable<T extends LivequeryBaseEntity = LivequeryBaseE
   }
 
   public fetch_more() {
-    const { options } = this.$.getValue()
+    const { options } = this.getValue()
     this.fetch_data(options, 'forward')
 
   }
 
   public fetch_prev() {
-    const { options } = this.$.getValue()
+    const { options } = this.getValue()
     this.fetch_data(options, 'backward')
   }
 
@@ -383,7 +382,7 @@ export class CollectionObservable<T extends LivequeryBaseEntity = LivequeryBaseE
     if (!id || !this.ref) return { ref: this.ref, collection_ref: this.ref }
     const index = this.#IdMap.get(id)
     if (index == undefined) return {}
-    const origin_ref = this.$.getValue().items[index].__ref
+    const origin_ref = this.getValue().items[index].__ref
     if (!origin_ref) throw 'COLLECTION_REF_NOT_FOUND'
     const refs = origin_ref.split('/')
     const collection_ref = refs.slice(0, refs.length - (refs.length % 2 == 1 ? 0 : 1)).join('/')
