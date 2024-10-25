@@ -45,15 +45,18 @@ export class CollectionObservable<T extends LivequeryBaseEntity = LivequeryBaseE
   #refs: string[] = []
 
 
-  $: BehaviorSubject<CollectionStream<T>>
+  $: BehaviorSubject<CollectionStream<T>> = new BehaviorSubject<CollectionStream<T>>({
+    items: [] as SmartQueryItem<T>[],
+    loading: false,
+    options: {},
+    paging: {}
+  })
 
   constructor(private ref: string | false | null | '' | undefined, private collection_options: CollectionOption<T>) {
     super(o => {
-      this.$ = new BehaviorSubject<CollectionStream<T>>({
-        items: [] as SmartQueryItem<T>[],
-        loading: false,
-        options: collection_options.options || {},
-        paging: {}
+      this.$.next({
+        ... this.$.getValue(),
+        options: collection_options.options || {}
       })
       const linker = this.$.subscribe(o)
       return () => {
