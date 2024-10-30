@@ -62,7 +62,7 @@ export class CollectionObservable<T extends LivequeryBaseEntity = LivequeryBaseE
       loading: false,
       paging: {},
       options: collection_options.options || {}
-    }) 
+    })
     if (ref && (ref.startsWith('/') || ref.endsWith('/'))) throw 'INVAILD_REF_FORMAT'
     this.#refs = this.#ref_parser(ref)
   }
@@ -144,6 +144,7 @@ export class CollectionObservable<T extends LivequeryBaseEntity = LivequeryBaseE
 
             const item = {
               ...payload as T,
+              id: payload.id || (payload as any)._id as string,
               __adding: false,
               __updating: false,
               __removing: false,
@@ -391,7 +392,11 @@ export class CollectionObservable<T extends LivequeryBaseEntity = LivequeryBaseE
   }
 
   public async add(payload: Partial<T>) {
-    return await this.collection_options.transporter.add<T>(`${this.ref}`, payload)
+    const r = await this.collection_options.transporter.add<T>(`${this.ref}`, payload)
+    if (r.data && r.data.item && !r.data.item.id) {
+      r.data.item.id = (r.data.item as any)._id
+    }
+    return r
   }
 
   public async update({ id: update_payload_id, ...payload }: Partial<T>) {
