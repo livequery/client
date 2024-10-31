@@ -4,7 +4,7 @@
   "repository": {
     "url": "https://github.com/livequery/client"
   },
-  "version": "2.0.11",
+  "version": "2.0.12",
   "description": "",
   "main": "build/index.js",
   "types": "build/index.d.ts",
