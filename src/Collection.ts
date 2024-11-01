@@ -221,7 +221,7 @@ export class CollectionObservable<T extends LivequeryBaseEntity = LivequeryBaseE
     }
 
 
-    if (state.paging.count) {
+    if (state.paging?.count) {
       const d = state.items.length - state.paging.count.current
       state.paging.count.current = state.items.length
       state.paging.count.total += d
@@ -251,8 +251,8 @@ export class CollectionObservable<T extends LivequeryBaseEntity = LivequeryBaseE
           prev: stream.some(s => s.data?.paging?.has?.prev)
         },
         page: {
-          current: Math.min(...stream.map(s => s.data?.paging?.page.current || 0)),
-          total: Math.max(...stream.map(s => s.data?.paging?.page.total || 0))
+          current: Math.min(...stream.map(s => s.data?.paging?.page?.current || 0)),
+          total: Math.max(...stream.map(s => s.data?.paging?.page?.total || 0))
         }
       }
 
@@ -301,7 +301,7 @@ export class CollectionObservable<T extends LivequeryBaseEntity = LivequeryBaseE
     const remain_data_refs = this.#refs.filter(ref => {
       const paging = this.#pages.get(ref)
       if (!paging) return true
-      return loading == 'forward' ? paging.has.next : paging.has.prev
+      return loading == 'forward' ? paging.has?.next : paging.has?.prev
     })
 
     const no_more_data = !flush && (remain_data_refs.length == 0 || this.getValue().loading)
