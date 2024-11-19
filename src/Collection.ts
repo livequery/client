@@ -341,7 +341,7 @@ export class CollectionObservable<T extends LivequeryBaseEntity = LivequeryBaseE
     ).subscribe()
 
     const subscription = merge(...queries.map(q => q.pipe(skip(1)))).pipe(
-      bufferTime(500),
+      bufferTime(this.collection_options?.sync_delay || 500),
       filter(list => list.length > 0),
       map(data => this.#sync(data, false, loading)),
       finalize(() => first_values.unsubscribe())
