@@ -30,6 +30,9 @@ export type CollectionStream<T extends LivequeryBaseEntity = LivequeryBaseEntity
   error?: boolean
   code?: string
   message?: string
+  summary?: {
+    [key: string]: any
+  }
 }
 
 
@@ -44,13 +47,6 @@ export class CollectionObservable<T extends LivequeryBaseEntity = LivequeryBaseE
   #IdMap = new Map<string, number>()
   #refs: string[] = []
 
-
-  // $: BehaviorSubject<CollectionStream<T>> = new BehaviorSubject<CollectionStream<T>>({
-  //   items: [] as SmartQueryItem<T>[],
-  //   loading: false,
-  //   options: {},
-  //   paging: {}
-  // }) 
   unsubscribe() {
     super.unsubscribe();
     this.#queries.forEach(s => s.unsubscribe())
@@ -88,13 +84,12 @@ export class CollectionObservable<T extends LivequeryBaseEntity = LivequeryBaseE
     const realtime = this.collection_options.realtime ?? true
     const actions = { update: false, reindex: false }
 
-    for (const { data, error, code, message } of stream) {
+    for (const { data, error, code, message, } of stream) {
 
       if (!from_local) {
         state.loading = false
         actions.update = true
       }
-
       // Error & paging
       if (error) {
         state.error = true
@@ -102,6 +97,12 @@ export class CollectionObservable<T extends LivequeryBaseEntity = LivequeryBaseE
         state.message = message
         actions.update = true
       }
+
+      if(data?.summary){
+        state.summary = data.summary
+        actions.update = true
+      }
+
 
       // Sync 
       for (const change of data?.changes || []) {
@@ -195,6 +196,8 @@ export class CollectionObservable<T extends LivequeryBaseEntity = LivequeryBaseE
       }
 
     }
+
+
     if (actions.reindex) {
       state.items = state.items.sort((a: LivequeryBaseEntity, b: LivequeryBaseEntity) => {
 
@@ -368,10 +371,6 @@ export class CollectionObservable<T extends LivequeryBaseEntity = LivequeryBaseE
     this.fetch_data(options, 'backward')
   }
 
-  // public fetch_around_cursor(cursor: string) {
-  //   const state = this.$.getValue()
-  //   this.fetch_data(state.options, 'both')
-  // }
 
   public filter(filters: Partial<QueryOption<T>>) {
     this.fetch_data(filters, 'forward', true)
