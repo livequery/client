@@ -20,6 +20,7 @@ export type SmartQueryItem<T> = T & {
   __adding: boolean
   __trigger: <R extends {}>(name: string, payload?: any, query?: any) => Promise<Response<R>>
   __ref: string
+  toJson: () => T
 }
 
 export type CollectionStream<T extends LivequeryBaseEntity = LivequeryBaseEntity> = {
@@ -98,7 +99,7 @@ export class CollectionObservable<T extends LivequeryBaseEntity = LivequeryBaseE
         actions.update = true
       }
 
-      if(data?.summary){
+      if (data?.summary) {
         state.summary = data.summary
         actions.update = true
       }
@@ -152,7 +153,8 @@ export class CollectionObservable<T extends LivequeryBaseEntity = LivequeryBaseE
               __remove: () => this.remove(payload?.id),
               __trigger: <R extends {}>(name: string, input: any = undefined, query: any) => this.trigger<R>(name, input, payload?.id, query),
               __update: (input: Partial<T>) => this.update({ ...input, id: payload?.id }),
-              __ref: change.ref
+              __ref: change.ref,
+              toJson: () => payload as T
             }
 
             direction == 'forward' ? state.items.push(item) : state.items.unshift(item)
