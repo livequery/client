@@ -24,6 +24,7 @@ export type SmartQueryItem<T> = T & {
 }
 
 export type CollectionStream<T extends LivequeryBaseEntity = LivequeryBaseEntity> = {
+  n: number
   items: SmartQueryItem<T>[],
   paging: Partial<Paging>
   loading?: LoadingIndicator
@@ -55,6 +56,7 @@ export class CollectionObservable<T extends LivequeryBaseEntity = LivequeryBaseE
 
   constructor(private ref: string | false | null | '' | undefined, private collection_options: CollectionOption<T>) {
     super({
+      n: 0,
       items: [] as SmartQueryItem<T>[],
       loading: false,
       paging: {},
@@ -88,6 +90,7 @@ export class CollectionObservable<T extends LivequeryBaseEntity = LivequeryBaseE
     for (const { data, error, code, message, } of stream) {
       if (from == 'request') {
         state.loading = false
+        state.n = state.n + 1
       }
 
       // Error & paging
@@ -284,7 +287,7 @@ export class CollectionObservable<T extends LivequeryBaseEntity = LivequeryBaseE
 
     const remain_data_refs = this.#refs.filter(ref => {
       const paging = this.#pages.get(ref)
-      if (!paging) return true 
+      if (!paging) return true
       return loading == 'forward' ? paging.has?.next : paging.has?.prev
     })
 
@@ -298,7 +301,7 @@ export class CollectionObservable<T extends LivequeryBaseEntity = LivequeryBaseE
       options: {
         ... this.getValue().options || {},
         ...options
-      } 
+      }
     })
 
 
