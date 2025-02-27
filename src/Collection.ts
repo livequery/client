@@ -37,7 +37,6 @@ export type CollectionStream<T extends LivequeryBaseEntity = LivequeryBaseEntity
   }
 }
 
-
 export class CollectionObservable<T extends LivequeryBaseEntity = LivequeryBaseEntity> extends BehaviorSubject<CollectionStream<T>> {
 
 
@@ -121,13 +120,12 @@ export class CollectionObservable<T extends LivequeryBaseEntity = LivequeryBaseE
               // Is realtime update that match filters
               from == 'realtime' && Object
                 .keys(state.options || {})
-                .filter(key => !key.includes('_'))
+                .filter(key => !key.startsWith(':'))
                 .every(key => {
                   const [field, expression] = key.split(':')
                   const a = payload[field as keyof typeof payload]
                   const b = state.options?.[field as keyof QueryOption<T>]
                   const map = {
-                    'default': () => a == b,
                     eq: () => a == b,
                     ne: () => a != b,
                     lt: () => typeof a == 'number' && typeof b == 'number' && a < b,
@@ -139,10 +137,10 @@ export class CollectionObservable<T extends LivequeryBaseEntity = LivequeryBaseE
                     between: () => typeof a == 'number' && Array.isArray(b) && typeof b[0] == 'number' && b[0] <= a && typeof b[1] == 'number' && a <= b[1]
                   }
                   try {
-                    const fn = map[expression as keyof typeof map || 'default']
-                    if (fn) return fn()
+                    const expr = expression == '' ? 'eq' : expression as keyof typeof map
+                    if (map[expr]) return map[expr]()
                   } catch (e) { }
-                  return false
+                  return true
                 })
             )
           ) {
