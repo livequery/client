@@ -1,0 +1,29 @@
+{
+  "name": "@livequery/client",
+  "module": "src/index.ts",
+  "type": "module",
+  "scripts": {
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix",
+    "type-check": "tsc --noEmit",
+    "format": "prettier --write .",
+    "format:check": "prettier --check ."
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.30.1",
+    "@stylistic/eslint-plugin": "^5.1.0",
+    "@types/bun": "^1.2.18",
+    "@types/eslint": "^9.6.1",
+    "eslint": "^9.30.1",
+    "eslint-config-standard": "^17.1.0",
+    "prettier": "^3.6.2",
+    "typescript-eslint": "^8.36.0"
+  },
+  "peerDependencies": {
+    "typescript": "^5"
+  },
+  "dependencies": {
+    "rxjs": "^7.8.2",
+    "uuid": "^11.1.0"
+  }
+}
